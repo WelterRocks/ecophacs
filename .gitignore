@@ -1,5 +1,6 @@
 vendor/
 tests/
+logs/
 composer.phar
 composer.lock
 .DS_Store
@@ -15,6 +16,7 @@ composer.lock
 npm-debug.log
 yarn-error.log
 .phpunit.result.cache
+.ecophacs-conf
 
 *.log
 *~
