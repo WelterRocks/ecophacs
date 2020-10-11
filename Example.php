@@ -20,10 +20,10 @@
 
 *******************************************************************************/
 
-require __DIR__ . '/../vendor/autoload.php';
-require __DIR__ . "/../src/EcoPhacs.php";
-require __DIR__ . "/../src/Config.php";
-require __DIR__ . "/../src/Device.php";
+require __DIR__ . '/vendor/autoload.php';
+require __DIR__ . "/src/EcoPhacs.php";
+require __DIR__ . "/src/Config.php";
+require __DIR__ . "/src/Device.php";
 
 use WelterRocks\EcoPhacs;
 
