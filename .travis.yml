@@ -1,0 +1,17 @@
+language: php
+php:
+  - '7.2'
+git:
+  quiet: true
+notifications:
+  email:
+    on_success: never
+before_script:
+  - composer install
+script:
+  # Search for PHP syntax errors.
+  - find -L . -path ./vendor -prune -o -name '*.php' -print0 | xargs -0 -n 1 -P 4 php -l
+  # Run PHPCS.
+  - vendor/bin/phpcs . ./phpcs.xml
+  ## PHP Mess Detector
+  - vendor/bin/phpmd ./src,./tests text ./phpmd.xml
