@@ -20,10 +20,11 @@
 
 *******************************************************************************/
 
-use \Norgul\Xmpp;
+use \Norgul\Xmpp\XmppClient;
+use \Norgul\Xmpp\Options;
 use \phpseclib\File\X509;
-use \WelterRocks\EcoPhacs;
-//use \phpseclib\Crypt\RSA;
+use \WelterRocks\EcoPhacs\Config;
+use \WelterRocks\EcoPhacs\Device;
     
 class Client
 {
@@ -68,7 +69,7 @@ class Client
     {
         $this->has_connected = false;
         
-        $this->xmpp_options = new \Norgul\Xmpp\Options();
+        $this->xmpp_options = new Options();
 
         $this->xmpp_options->setSSLVerifyHost(false);
         $this->xmpp_options->setSSLVerifyPeer(false);
@@ -82,27 +83,14 @@ class Client
         $this->xmpp_options->setUseTls($this->config->xmpp_use_tls);
         $this->xmpp_options->setAuthZID($this->config->user_uid);
         
-        $this->xmpp_client = new \Norgul\Xmpp\XmppClient($this->xmpp_options);
+        $this->xmpp_client = new XmppClient($this->xmpp_options);
     }
         
     private function encrypt($plain, &$encrypted = null)
     {   
-        // We need to transform the public_key from X509 format, first
         $x509 = new X509();
         $x509->loadX509($this->config->public_key);
         
-        /* THIS IS CURRENTLY NOT WORKING ???
-        if (!defined("CRYPT_RSA_PKCS15_COMPAT")) define('CRYPT_RSA_PKCS15_COMPAT', true);
-
-        $rsa = new RSA();        
-        
-        $rsa->loadKey($x509->getPublicKey());        
-        $rsa->setEncryptionMode(RSA::ENCRYPTION_PKCS1);
-        
-        $encrypted = $rsa->encrypt($plain);
-        */
-        
-        // FALLBACK TO OPENSSL - SHOULD DO THE SAME AND WORKS :-/
         openssl_public_encrypt($plain, $encrypted, $x509->getPublicKey());
                        
         if ($encrypted)
