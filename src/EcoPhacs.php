@@ -22,6 +22,7 @@
 
 use \Norgul\Xmpp;
 use \phpseclib\File\X509;
+use \WelterRocks\EcoPhacs;
 //use \phpseclib\Crypt\RSA;
     
 class EcoPhacsClient
@@ -36,26 +37,6 @@ class EcoPhacsClient
     public $has_connected = false;
     
     public $device_list = null;
-    
-    public const CLEANING_MODE_AUTO = 'auto';
-    public const CLEANING_MODE_BORDER = 'border';
-    public const CLEANING_MODE_SPOT = 'spot';
-    public const CLEANING_MODE_STOP = 'stop';
-    public const CLEANING_MODE_SINGLEROOM = 'singleroom';
-    
-    public const VACUUM_POWER_STANDARD = 'standard';
-    public const VACUUM_POWER_STRONG = 'strong';
-    
-    public const VACUUM_STATUS_OFFLINE = 'offline';
-
-    public const CHARGING_MODE_GO = 'go';
-    public const CHARGING_MODE_GOING = 'Going';
-    public const CHARGING_MODE_CHARGING = 'SlotCharging';
-    public const CHARGING_MODE_IDLE = 'Idle';
-    
-    public const COMPONENT_SIDE_BRUSH = 'SideBrush';
-    public const COMPONENT_BRUSH = 'Brush';
-    public const COMPONENT_DUST_CASE_HEAP = 'DustCaseHeap';
     
     public const TIMEZONE_DIFF = 'GMT-8';
     
@@ -401,10 +382,46 @@ class EcoPhacsClient
             
         if ($json->result == "ok")
         {
-            $this->device_list = $json->devices;
+            $device_list = json_decode(json_encode($json->devices));
+            
+            if (!is_array($device_list))
+            {
+                $error = "invalid or empty device list";
+                
+                return false;
+            }
+            elseif (count($device_list) == 0)
+            {
+                $error = "no registered device found";
+                
+                return false;
+            }
+            
+            $this->device_list = array();            
             $this->has_logged_in = true;
             
             if (!$this->xmpp_client) $this->init_xmpp();
+            
+            if (!$this->xmpp_client)
+            {
+                $error = "unable to connect to api server";
+                
+                return false;
+            }
+            
+            foreach ($device_list as $index => $dev)
+            {
+                $this->device_list[$index] = new Device(
+                    $this->xmpp_client, 
+                    $this->config->atom_domain,
+                    $dev->did, 
+                    $dev->class, 
+                    $dev->name,
+                    $dev->nick,
+                    $dev->company,
+                    $dev->resource
+                );
+            }
             
             return true;
         }
@@ -463,14 +480,26 @@ class EcoPhacsClient
         $result = trim(strip_tags($this->xmpp_client->getResponse()));
         
         if (!$result)
+        {
+            $error = "Unexpected or empty response";
+            
             return false;
+        }
             
         $expected = md5("PLAIN".$this->config->user_uid."@".$this->config->api_realm."/".substr($this->config->device_id, 0, 8));
             
         if (md5($result) == $expected)
             $this->has_connected = true;
+            
+        if (!$this->has_connected)
+            $error = "Authentication failed";
         
         return $this->has_connected;
+    }
+    
+    public function get_device_list()
+    {
+        return $this->device_list;
     }
     
     function __construct($config = ".ecophacs", $username = null, $password = null, $continent = null, $country = null, $device_id = null)
