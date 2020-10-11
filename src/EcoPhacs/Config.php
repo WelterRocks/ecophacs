@@ -20,7 +20,7 @@
 
 *******************************************************************************/
 
-final class config
+final class Config
 {
     private $api_key = 'eJUWrzRv34qFSaYk';
     private $api_secret = 'Cyu5jcR4zyK6QEPn1hdIGXB5QIDAQABMA0GC';

@@ -28,6 +28,7 @@
     },
     "autoload": {
         "psr-4": {
+            "WelterRocks\\": "src",
             "Norgul\\Xmpp\\": "override/welterrocks/xmpp-php/src"
         }
     }

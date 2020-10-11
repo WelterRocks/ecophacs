@@ -25,7 +25,7 @@ use \phpseclib\File\X509;
 use \WelterRocks\EcoPhacs;
 //use \phpseclib\Crypt\RSA;
     
-class EcoPhacsClient
+class Client
 {
     private $xmpp_client = null;
     private $xmpp_options = null;

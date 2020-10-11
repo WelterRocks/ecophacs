@@ -21,13 +21,10 @@
 *******************************************************************************/
 
 require __DIR__ . '/vendor/autoload.php';
-require __DIR__ . "/src/EcoPhacs.php";
-require __DIR__ . "/src/Config.php";
-require __DIR__ . "/src/Device.php";
 
-use WelterRocks\EcoPhacs;
+use WelterRocks\EcoPhacs\Client;
 
-$eph = new WelterRocks\EcoPhacs\EcoPhacsClient(".ecophacs-conf");
+$eph = new Client(".ecophacs-conf");
 $err = null;
 
 if (!$eph->try_login($err))
