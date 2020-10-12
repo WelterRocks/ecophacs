@@ -392,15 +392,16 @@ class Client
             
             if (!$this->xmpp_client)
             {
-                $error = "unable to connect to api server";
+                $error = "unable to initialize api server connector";
                 
                 return false;
             }
             
-            foreach ($device_list as $index => $dev)
+            foreach ($device_list as $dev)
             {
-                $this->device_list[$index] = new Device(
+                $this->device_list[$dev->did] = new Device(
                     $this->xmpp_client, 
+                    $this->xmpp_options,
                     $this->config->atom_domain,
                     $dev->did, 
                     $dev->class, 
@@ -485,8 +486,13 @@ class Client
         return $this->has_connected;
     }
     
-    public function get_device_list()
+    public function get_device_list(&$indexes = null)
     {
+        $indexes = array();
+        
+        foreach ($this->device_list as $index => $dev)
+            $indexes[$index] = $dev->nick;
+            
         return $this->device_list;
     }
     

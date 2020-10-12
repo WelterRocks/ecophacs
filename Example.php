@@ -1,4 +1,4 @@
-<?php // THIS FILE IS CURRENTLY ONLY FOR INTERNAL TESTING
+<?php require __DIR__ . '/vendor/autoload.php';
 
 /******************************************************************************
 
@@ -20,23 +20,60 @@
 
 *******************************************************************************/
 
-require __DIR__ . '/vendor/autoload.php';
-
+// Initialize autoloading
 use WelterRocks\EcoPhacs\Client;
 
-$eph = new Client(".ecophacs-conf");
-$err = null;
-
-if (!$eph->try_login($err))
-    die("LOGIN-ERROR: ".$err."\n");
-
-if (!$eph->try_connect($err))
-    die("CONNECT-ERROR: ".$err."\n");
+/* Basic configuration (not needed, if values already stored in $ecovacs_config_file) *
+ * Uncomment the values, you need to (re)store in $ecovacs_config_file                *
+ **************************************************************************************/
  
-$devices = $eph->get_device_list();
+// Ecovacs account (email address)
+//$ecovacs_account_id 	= "email@address.here";
 
-print_r($devices);
+// Ecovacs account password (automatically scrambled in config file)
+//$ecovacs_password 	= "SuPerSecUreP@ssw0rd";
 
-   
-//print_r($eph);
+// Location for Ecovacs API (two letter code, lowercase)
+//$ecovacs_continent	= "eu";
+//$ecovacs_country	= "de";
 
+// Device ID (randomly generated, 32 chars)
+//$ecovacs_device_id	= md5(microtime(true));
+
+// The location of configuration store (mandatory)
+$ecovacs_config_file	= ".ecophacs-conf";
+
+// Create the client (main) object
+$ecovacs = new Client(
+    $ecovacs_config_file,
+    ((isset($ecovacs_account_id)) ? $ecovacs_account_id : null),
+    ((isset($ecovacs_password)) ? $ecovacs_password : null),
+    ((isset($ecovacs_continent)) ? $ecovacs_continent : null),
+    ((isset($ecovacs_country)) ? $ecovacs_country : null),
+    ((isset($ecovacs_device_id)) ? $ecovacs_device_id : null)
+);
+
+// Initialize error string store
+$error = null;
+
+// Try to login, if not yet done, otherwise fetch device list
+if (!$ecovacs->try_login($error))
+    die("LOGIN-ERROR: ".$error."\n");
+
+// Try to connect to API server
+if (!$ecovacs->try_connect($error))
+    die("CONNECT-ERROR: ".$error."\n");
+
+// Get device list and indexes by device id => device name
+$indexes = null; 
+$devices = $ecovacs->get_device_list($indexes);
+
+// Ping the first device and you will see ---> nothing :-/
+foreach ($devices as $did => $dev)
+{
+    $result = $dev->ping();
+    
+    print_r($result);
+    print_r($dev);
+    break;
+}

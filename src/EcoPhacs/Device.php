@@ -20,6 +20,9 @@
 
 *******************************************************************************/
 
+use Norgul\Xmpp\XmppClient;
+use Norgul\Xmpp\Options;
+
 class Device
 {
     private $did = null;
@@ -27,9 +30,11 @@ class Device
     private $name = null;
     private $nick = null;
     private $company = null;
+    private $resource = null;
     private $atom = null;
     
-    private $xmpp = null;
+    private $xmpp_client = null;
+    private $xmpp_options = null;
     
     public const CLEANING_MODE_AUTO = 'auto';
     public const CLEANING_MODE_BORDER = 'border';
@@ -50,26 +55,48 @@ class Device
     public const COMPONENT_SIDE_BRUSH = 'SideBrush';
     public const COMPONENT_BRUSH = 'Brush';
     public const COMPONENT_DUST_CASE_HEAP = 'DustCaseHeap';
-    
-    public function get_features()
-    {
-        if (!$this->has_connected)
-            return false;
-            
-        $this->xmpp_client->iq->getFeatures($this->atom);
         
-        print_r($this->xmpp_client->iq);
-    }
-    
     public function ping()
     {
-        if (!$this->has_connected)
-            return false;
+        $this->xmpp_client->iq->pingTo($this->xmpp_options->fullJid(), $this->atom);
+        
+        return $this->xmpp_client->getResponse();
+    }
+    
+    private function clean($mode = self::CLEANING_MODE_AUTO, $speed = self::VACUUM_POWER_STANDARD, $act = null)
+    {
+        $com = null;
+        
+        switch ($mode)
+        {
+            case self::CLEANING_MODE_AUTO:
+            case self::CLEANING_MODE_BORDER:
+            case self::CLEANING_MODE_SINGLEROOM:
+            case self::CLEANING_MODE_SPOT:
+            case self::CLEANING_MODE_STOP:
+                $com = "<clean type='{$mode}' speed='{$speed}' act='{$act}'/>";
+                break;
+            default:
+                return false;
+        }
+
+        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->atom, "Clean", $com);
+        
+        return $this->xmpp_client->getResponse();
+    }
+    
+    function __get($key)
+    {
+        if (!isset($this->$key))
+            return null;
             
-        $this->xmpp_client->iq->ping();
+        if ($key == "xmpp")
+            return null;
+            
+        return $this->$key;
     }
         
-    function __construct(\Norgul\Xmpp\XmppClient $xmpp, $atom_domain, $did, $class, $name, $nick, $company, $resource)
+    function __construct(XmppClient $xmpp_client, Options $xmpp_options, $atom_domain, $did, $class, $name, $nick, $company, $resource)
     {
         $this->did = $did;
         $this->class = $class;
@@ -79,6 +106,7 @@ class Device
         $this->resource = $resource;
         $this->atom = $did."@".$class.".".$atom_domain."/".$resource;
         
-        $this->xmpp = $xmpp;
+        $this->xmpp_client = $xmpp_client;
+        $this->xmpp_options = $xmpp_options;
     }
 }
