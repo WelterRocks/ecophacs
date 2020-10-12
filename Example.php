@@ -22,7 +22,7 @@
 
 // Initialize autoloading
 use WelterRocks\EcoPhacs\Client;
-use WelterROcks\EcoPhacs\Device;
+use WelterRocks\EcoPhacs\Device;
 
 /* Basic configuration (not needed, if values already stored in $ecovacs_config_file) *
  * Uncomment the values, you need to (re)store in $ecovacs_config_file                *
@@ -238,9 +238,9 @@ foreach ($devices as $did => $dev)
 
         sleep(5);
 
-        echo "- Holding ".$dev->nick."...";
+        echo "- Halting ".$dev->nick."...";
         
-        if ($dev->hold())
+        if ($dev->halt())
             echo "done\n";
         else
             echo "failed\n";

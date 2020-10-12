@@ -58,9 +58,8 @@ class Device
     public $status_vacuum_power = null;
     public $status_charging_state = null;
     
-    public $status_st = null;
-    public $status_t = null;
-    public $status_a = null;
+    public $status_report_clean = null;
+    public $status_report_charge = null;
     
     public $status_lifespan_brush = null;
     public $status_lifespan_side_brush = null;
@@ -174,6 +173,9 @@ class Device
                 $this->last_charge_state = round(microtime(true) * 1000);
                 $this->status_charging_state = $charge["TYPE"];
                 
+                unset($charge["TYPE"]);
+                
+                $this->status_report_charge = json_decode(json_encode($charge));
                 $n++;
             }
         }
@@ -188,15 +190,12 @@ class Device
                  
                 $this->last_clean_state = round(microtime(true) * 1000);
                 $this->status_cleaning_mode = $clean["TYPE"];
-                $this->status_vaccum_power = $clean["SPEED"];
-                   
-                if (isset($clean["ST"]))
-                    $this->status_st = $clean["ST"];
-                if (isset($clean["T"]))
-                    $this->status_t = $clean["T"];
-                if (isset($clean["A"]))
-                    $this->status_a = $clean["A"];
+                $this->status_vacuum_power = $clean["SPEED"];
                 
+                unset($clean["TYPE"]);
+                unset($clean["SPEED"]);
+                
+                $this->status_report_clean = json_decode(json_encode($clean));
                 $n++;
             }
         }    
@@ -356,7 +355,7 @@ class Device
         return $this->right();
     }
     
-    public function hold()
+    public function halt()
     {
         return $this->move(self::ACTION_STOP);
     }
