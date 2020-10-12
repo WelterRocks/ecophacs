@@ -97,6 +97,9 @@ $device_name = null;
 $device_power = Device::VACUUM_POWER_STANDARD;
 $device_state = null;
 
+// Initialize flags
+$flag_output_as_json = false;
+
 // Get command line arguments
 for ($i = 1; $i < $argc; $i++)
 {
@@ -214,6 +217,10 @@ for ($i = 1; $i < $argc; $i++)
             }
             $i++;
             break;
+        case "-j":
+        case "--json-output":
+            $flag_output_as_json = true;
+            break;
     }
 }
 
@@ -309,7 +316,7 @@ else
     
     if ($cmnd == "status")
     {
-        echo "Requesting status of ".$device->nick."...";
+        if (!$flag_output_as_json) echo "Requesting status of ".$device->nick."...";
         $device->get_clean_state();
         $device->get_battery_info();
         $device->get_charge_state();
@@ -317,19 +324,28 @@ else
         $device->get_lifespan(Device::COMPONENT_BRUSH);
         $device->get_lifespan(Device::COMPONENT_SIDE_BRUSH);
         $device->get_lifespan(Device::COMPONENT_DUST_CASE_HEAP);
-        echo "done\n\n";
+        if (!$flag_output_as_json) echo "done\n\n";
         
-        echo $device->nick." => ".$device->did."\n\n";
-        echo " * Company: ".$device->company."\n";
-        echo " * Cleaning-Mode: ".$device->status_cleaning_mode."\n";
-        echo " * Vacuum-Power: ".$device->status_vacuum_power."\n";
-        echo " * Battery-Power: ".$device->status_battery_power."%\n";
-        echo " * Charging-State: ".$device->status_charging_state."\n";
-        echo " * Lifespan of brush: ".$device->status_lifespan_brush->percent."%\n";
-        echo " * Lifespan of side brush: ".$device->status_lifespan_side_brush->percent."%\n";
-        echo " * Lifespan of dust case heap: ".$device->status_lifespan_dust_case_heap->percent."%\n";
-        
-        echo "\n";
+        if ($flag_output_as_json)
+        {
+            $json = json_encode($device);
+            
+            echo $json."\n";
+        }
+        else
+        {
+            echo $device->nick." => ".$device->did."\n\n";
+            echo " * Company: ".$device->company."\n";
+            echo " * Cleaning-Mode: ".$device->status_cleaning_mode."\n";
+            echo " * Vacuum-Power: ".$device->status_vacuum_power."\n";
+            echo " * Battery-Power: ".$device->status_battery_power."%\n";
+            echo " * Charging-State: ".$device->status_charging_state."\n";
+            echo " * Lifespan of brush: ".$device->status_lifespan_brush->percent."%\n";
+            echo " * Lifespan of side brush: ".$device->status_lifespan_side_brush->percent."%\n";
+            echo " * Lifespan of dust case heap: ".$device->status_lifespan_dust_case_heap->percent."%\n";
+            
+            echo "\n";
+        }
         exit;
     }
     elseif ($cmnd == "settime")
