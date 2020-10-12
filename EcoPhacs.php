@@ -328,9 +328,7 @@ else
         
         if ($flag_output_as_json)
         {
-            $json = json_encode($device);
-            
-            echo $json."\n";
+            echo $device->to_json()."\n";
         }
         else
         {

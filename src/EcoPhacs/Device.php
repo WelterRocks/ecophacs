@@ -593,6 +593,22 @@ class Device
         return $this->is_available;
     }
     
+    public function to_json()
+    {
+        $obj = json_decode(json_encode($this));
+        
+        $obj->serial = $this->did;
+        $obj->name = $this->name;
+        $obj->nick = $this->nick;
+        $obj->class = $this->class;
+        $obj->bare_jid = $this->bare_jid;
+        $obj->full_jid = $this->full_jid;
+        $obj->user_jid = $this->xmpp_options->fullJid();
+        $obj->company = $this->company;
+        
+        return json_encode($obj);
+    }
+    
     function __get($key)
     {
         if (!isset($this->$key))
