@@ -41,7 +41,6 @@ class XmppClient
     {
         $this->options = $options;
         $this->initDependencies();
-        $this->initSession();
     }
 
     protected function initDependencies(): void
@@ -55,6 +54,7 @@ class XmppClient
         $this->openStream();
         $this->auth->authenticate();
         $this->iq->setResource($this->options->getResource());
+        $this->iq->session();
         $this->sendInitialPresenceStanza();
     }
 
@@ -94,7 +94,8 @@ class XmppClient
 
     protected function sendInitialPresenceStanza()
     {
-        $this->socket->send('<presence/>');
+        // Set status to available
+        $this->socket->send("<presence type='available'/>");
     }
 
     protected function initStanzas($socket)
@@ -103,14 +104,6 @@ class XmppClient
         $this->iq = new Iq($socket);
         $this->presence = new Presence($socket);
         $this->message = new Message($socket);
-    }
-
-    protected function initSession()
-    {
-        if (session_status() === PHP_SESSION_NONE) {
-            session_id(uniqid());
-            session_start();
-        }
     }
 
     protected function initSocket(): Socket

@@ -22,6 +22,7 @@
 
 use Norgul\Xmpp\XmppClient;
 use Norgul\Xmpp\Options;
+use WelterRocks\EcoPhacs\Client;
 
 class Device
 {
@@ -31,11 +32,40 @@ class Device
     private $nick = null;
     private $company = null;
     private $resource = null;
-    private $atom = null;
+
+    private $full_jid = null;
+    private $bare_jid = null;
     
     private $xmpp_client = null;
     private $xmpp_options = null;
     
+    public $is_available = null;
+    
+    public $last_ping_request = null;
+    public $last_ping_response = null;
+    public $last_ping_roundtrip = null;
+    
+    public $last_clean_state = null;
+    public $last_charge_state = null;
+    public $last_battery_msg = null;
+    
+    public $last_lifespan_brush = null;
+    public $last_lifespan_side_brush = null;
+    public $last_lifespan_dust_case_heap = null;
+    
+    public $status_battery_power = null;
+    public $status_cleaning_mode = null;
+    public $status_vacuum_power = null;
+    public $status_charging_state = null;
+    
+    public $status_st = null;
+    public $status_t = null;
+    public $status_a = null;
+    
+    public $status_lifespan_brush = null;
+    public $status_lifespan_side_brush = null;
+    public $status_lifespan_dust_case_heap = null;
+        
     public const CLEANING_MODE_AUTO = 'auto';
     public const CLEANING_MODE_BORDER = 'border';
     public const CLEANING_MODE_SPOT = 'spot';
@@ -48,22 +78,225 @@ class Device
     public const VACUUM_STATUS_OFFLINE = 'offline';
 
     public const CHARGING_MODE_GO = 'go';
-    public const CHARGING_MODE_GOING = 'Going';
-    public const CHARGING_MODE_CHARGING = 'SlotCharging';
-    public const CHARGING_MODE_IDLE = 'Idle';
+    
+    public const CHARGING_STATE_GOING = 'Going';
+    public const CHARGING_STATE_CHARGING = 'SlotCharging';
+    public const CHARGING_STATE_IDLE = 'Idle';
+    
+    public const ACTION_MOVE_FORWARD = 'forward';
+    
+    public const ACTION_SPIN_LEFT = 'SpinLeft';
+    public const ACTION_SPIN_RIGHT = 'SpinRight';
+    
+    public const ACTION_STOP = 'stop';
+    public const ACTION_TURN_AROUND = 'TurnAround';
     
     public const COMPONENT_SIDE_BRUSH = 'SideBrush';
     public const COMPONENT_BRUSH = 'Brush';
     public const COMPONENT_DUST_CASE_HEAP = 'DustCaseHeap';
-        
-    public function ping()
+    
+    public const DEFAULT_TIMEZONE = 'GMT+2';
+    
+    private static function parse_response($response, &$indexes = null)
     {
-        $this->xmpp_client->iq->pingTo($this->xmpp_options->fullJid(), $this->atom);
+        if (!$response)
+            return null;
+            
+        $res = Client::parse_response($response, $indexes);
         
-        return $this->xmpp_client->getResponse();
+        return $res;
     }
     
-    private function clean($mode = self::CLEANING_MODE_AUTO, $speed = self::VACUUM_POWER_STANDARD, $act = null)
+    private function iq_complete_result($result)
+    {
+        if (!is_array($result))
+            return null;
+            
+        $retval = null;
+        
+        foreach ($result as $xml)
+        {
+            if (($xml["tag"] == "IQ") && ($xml["type"] == "complete") && (isset($xml["attributes"])))
+            {
+                $attr = $xml["attributes"];
+                
+                if (($attr["TO"] == $this->xmpp_options->fullJid()) && ($attr["FROM"] == $this->full_jid))
+                {
+                    if ($attr["TYPE"] == "result")
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        $retval = false;
+                    }
+                }
+            }
+        }
+        
+        return $retval;
+    }
+    
+    private function register_states($result, $indexes)
+    {
+        if (!$result)
+            return null;
+            
+        if (!$indexes)
+            return null;
+            
+        $n = 0;
+            
+        if ((isset($indexes["BATTERY"])) && (isset($indexes["BATTERY"][0])))
+        {
+            $index = $indexes["BATTERY"][0];
+            
+            if (isset($result[$index]["attributes"]))
+            {
+                if (isset($result[$index]["attributes"]["POWER"]))
+                {
+                    $this->last_battery_msg = round(microtime(true) * 1000);            
+                    $this->status_battery_power = (double)$result[$index]["attributes"]["POWER"];
+                    
+                    $n++;
+                }
+            }
+        }
+        
+        if ((isset($indexes["CHARGE"])) && (isset($indexes["CHARGE"][0])))
+        {
+            $index = $indexes["CHARGE"][0];                
+               
+            if (isset($result[$index]["attributes"]))
+            {
+                $charge = $result[$index]["attributes"];
+                    
+                $this->last_charge_state = round(microtime(true) * 1000);
+                $this->status_charging_state = $charge["TYPE"];
+                
+                $n++;
+            }
+        }
+            
+        if ((isset($indexes["CLEAN"])) && (isset($indexes["CLEAN"][0])))
+        {
+            $index = $indexes["CLEAN"][0];                
+             
+            if (isset($result[$index]["attributes"]))
+            {
+                $clean = $result[$index]["attributes"];
+                 
+                $this->last_clean_state = round(microtime(true) * 1000);
+                $this->status_cleaning_mode = $clean["TYPE"];
+                $this->status_vaccum_power = $clean["SPEED"];
+                   
+                if (isset($clean["ST"]))
+                    $this->status_st = $clean["ST"];
+                if (isset($clean["T"]))
+                    $this->status_t = $clean["T"];
+                if (isset($clean["A"]))
+                    $this->status_a = $clean["A"];
+                
+                $n++;
+            }
+        }    
+        
+        if ($n > 0)
+            return true;
+            
+        return false;
+    }
+    
+    private function get_parsed_response(&$raw_response = null, &$indexes = null)
+    {
+        $indexes = null;
+        
+        $raw_response = $this->xmpp_client->getResponse();
+        $result = self::parse_response($raw_response, $indexes);
+        
+        return $result;    
+    }
+        
+    public function playsound($sid = 0, $act = null)
+    {
+        $com = "<query sid='{$sid}'".(($act) ? " act='{$act}'" : "")."/>";
+        
+        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "PlaySound", $com);
+        
+        $indexes = null;
+        $raw_response = null;
+        
+        $result = $this->get_parsed_response($raw_response, $indexes);
+
+        if (!$result)
+            return null;
+            
+        $playsound_state = $this->iq_complete_result($result);
+            
+        if ($playsound_state)
+            $this->register_states($result, $indexes);
+        
+        return $playsound_state;
+    }
+    
+    public function move($action = self::ACTION_MOVE_FORWARD, $act = null)
+    {
+        $com = null;
+        
+        switch ($action)
+        {
+            case self::ACTION_MOVE_FORWARD:
+            case self::ACTION_SPIN_LEFT:
+            case self::ACTION_SPIN_RIGHT:
+            case self::ACTION_STOP:
+            case self::ACTION_TURN_AROUND:
+                $com = "<move action='{$action}'".(($act) ? " act='{$act}'" : "")."/>";
+                break;
+            default:
+                return false;
+        }
+        
+        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "Move", $com);
+                                
+        $indexes = null;
+        $raw_response = null;
+        
+        $result = $this->get_parsed_response($raw_response, $indexes);
+
+        if (!$result)
+            return null;
+            
+        $move_state = $this->iq_complete_result($result);
+
+        if ($move_state)
+            $this->register_states($result, $indexes);
+        
+        return $move_state;
+    }
+    
+    public function charge($act = null)
+    {
+        $com = "<charge type='".self::CHARGING_MODE_GO."'".(($act) ? " act='{$act}'" : "")."/>";
+        
+        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "Charge", $com);
+                        
+        $indexes = null;
+        $raw_response = null;
+        
+        $result = $this->get_parsed_response($raw_response, $indexes);
+        
+        if (!$result)
+            return null;
+
+        $charge_state = $this->iq_complete_result($result);
+        
+        if ($charge_state)
+            $this->register_states($result, $indexes);
+        
+        return $charge_state;
+    }
+    
+    public function clean($mode = self::CLEANING_MODE_AUTO, $speed = self::VACUUM_POWER_STANDARD, $act = null)
     {
         $com = null;
         
@@ -74,15 +307,291 @@ class Device
             case self::CLEANING_MODE_SINGLEROOM:
             case self::CLEANING_MODE_SPOT:
             case self::CLEANING_MODE_STOP:
-                $com = "<clean type='{$mode}' speed='{$speed}' act='{$act}'/>";
+                $com = "<clean type='{$mode}' speed='{$speed}'".(($act) ? " act='{$act}'" : "")."/>";
                 break;
             default:
                 return false;
         }
 
-        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->atom, "Clean", $com);
+        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "Clean", $com);
+                
+        $indexes = null;
+        $raw_response = null;
         
-        return $this->xmpp_client->getResponse();
+        $result = $this->get_parsed_response($raw_response, $indexes);
+
+        if (!$result)
+            return null;
+            
+        $clean_state = $this->iq_complete_result($result);
+        
+        if ($clean_state)
+            $this->register_states($result, $indexes);
+
+        return $clean_state;
+    }
+    
+    public function forward()
+    {
+        return $this->move(self::ACTION_MOVE_FORWARD);
+    }
+    
+    public function left()
+    {
+        return $this->move(self::ACTION_SPIN_LEFT);
+    }
+    
+    public function spin_left()
+    {
+        return $this->left();
+    }
+    
+    public function right()
+    {
+        return $this->move(self::ACTION_SPIN_RIGHT);
+    }
+    
+    public function spin_right()
+    {
+        return $this->right();
+    }
+    
+    public function hold()
+    {
+        return $this->move(self::ACTION_STOP);
+    }
+    
+    public function turn()
+    {
+        return $this->move(self::ACTION_TURN_AROUND);
+    }
+    
+    public function turn_around()
+    {
+        return $this->turn();
+    }
+    
+    public function auto($strong = false)
+    {
+        return $this->clean(self::CLEANING_MODE_AUTO, (($strong) ? self::VACUUM_POWER_STRONG : self::VACUUM_POWER_STANDARD));
+    }
+        
+    public function border($strong = false)
+    {
+        return $this->clean(self::CLEANING_MODE_BORDER, (($strong) ? self::VACUUM_POWER_STRONG : self::VACUUM_POWER_STANDARD));
+    }
+    
+    public function edge($strong = false)
+    {
+        return $this->border($strong);
+    }
+        
+    public function singleroom($strong = false)
+    {
+        return $this->clean(self::CLEANING_MODE_SINGLEROOM, (($strong) ? self::VACUUM_POWER_STRONG : self::VACUUM_POWER_STANDARD));
+    }
+    
+    public function single_room($strong = false)
+    {
+        return $this->singleroom($strong);
+    }
+    
+    public function spot($strong = false)
+    {
+        return $this->clean(self::CLEANING_MODE_SPOT, (($strong) ? self::VACUUM_POWER_STRONG : self::VACUUM_POWER_STANDARD));
+    }
+    
+    public function circle($strong = false)
+    {
+        return $this->spot($strong);
+    }
+    
+    public function stop($strong = false)
+    {
+        return $this->clean(self::CLEANING_MODE_STOP, (($strong) ? self::VACUUM_POWER_STRONG : self::VACUUM_POWER_STANDARD));
+    }
+    
+    public function get_clean_state(&$raw_response = null)
+    {        
+        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "GetCleanState");
+        
+        $indexes = null;
+        $raw_response = null;
+        
+        $result = $this->get_parsed_response($raw_response, $indexes);
+
+        if (!$result)
+            return null;
+            
+        $clean_state = $this->iq_complete_result($result);
+        
+        if ($clean_state)
+            $this->register_states($result, $indexes);
+
+        return $clean_state;
+    }
+    
+    public function get_battery_info()
+    {        
+        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "GetBatteryInfo");
+        
+        $indexes = null;
+        $raw_response = null;
+        
+        $result = $this->get_parsed_response($raw_response, $indexes);
+
+        if (!$result)
+            return null;
+            
+        $battery_state = $this->iq_complete_result($result);
+            
+        if ($battery_state)
+            $this->register_states($result, $indexes);
+            
+        return $battery_state;
+    }
+    
+    public function get_charge_state()
+    {        
+        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "GetChargeState");
+        
+        $indexes = null;
+        $raw_response = null;
+        
+        $result = $this->get_parsed_response($raw_response, $indexes);
+
+        if (!$result)
+            return null;
+            
+        $charge_state = $this->iq_complete_result($result);
+        
+        if ($charge_state)
+            $this->register_states($result, $indexes);
+
+        return $charge_state;
+   }
+    
+    public function get_lifespan($component = self::COMPONENT_BRUSH)
+    {   
+        switch ($component)
+        {
+            case self::COMPONENT_BRUSH:
+            case self::COMPONENT_SIDE_BRUSH:
+            case self::COMPONENT_DUST_CASE_HEAP:
+                $com = "<query type='{$component}'/>";
+                break;
+            default:
+                return false;
+        }
+        
+        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "GetLifeSpan", $com);
+        
+        $indexes = null;
+        $raw_response = null;
+        
+        $result = $this->get_parsed_response($raw_response, $indexes);
+
+        if (!$result)
+            return null;
+                        
+        $lifespan = $this->iq_complete_result($result);
+        
+        if ($lifespan)
+        {
+            $this->register_states($result, $indexes);
+            
+            if ((isset($indexes["CTL"])) && (isset($indexes["CTL"][0])))
+            {
+                $index = $indexes["CTL"][0];
+                
+                if (isset($result[$index]["attributes"]))
+                {                
+                    $attr = $result[$index]["attributes"];
+                    
+                    switch ($attr["TYPE"])
+                    {
+                        case self::COMPONENT_BRUSH:
+                            $this->last_lifespan_brush = round(microtime(true) * 1000);
+                            
+                            $this->status_lifespan_brush = new \stdClass;
+                            $this->status_lifespan_brush->total = (double)$attr["TOTAL"];
+                            $this->status_lifespan_brush->value = (double)$attr["VAL"];
+                            $this->status_lifespan_brush->percent = round((100 / $this->status_lifespan_brush->total * $this->status_lifespan_brush->value));
+                            break;
+                        case self::COMPONENT_SIDE_BRUSH:
+                            $this->last_lifespan_side_brush = round(microtime(true) * 1000);
+                            
+                            $this->status_lifespan_side_brush = new \stdClass;
+                            $this->status_lifespan_side_brush->total = (double)$attr["TOTAL"];
+                            $this->status_lifespan_side_brush->value = (double)$attr["VAL"];
+                            $this->status_lifespan_side_brush->percent = round((100 / $this->status_lifespan_side_brush->total * $this->status_lifespan_side_brush->value));
+                            break;
+                        case self::COMPONENT_DUST_CASE_HEAP:
+                            $this->last_lifespan_dust_case_heap = round(microtime(true) * 1000);
+                            
+                            $this->status_lifespan_dust_case_heap = new \stdClass;
+                            $this->status_lifespan_dust_case_heap->total = (double)$attr["TOTAL"];
+                            $this->status_lifespan_dust_case_heap->value = (double)$attr["VAL"];
+                            $this->status_lifespan_dust_case_heap->percent = round((100 / $this->status_lifespan_dust_case_heap->total * $this->status_lifespan_dust_case_heap->value));
+                            break;
+                        default:
+                            break;
+                    }    
+                }
+            }
+        }
+
+        return $lifespan;
+    }
+    
+    public function set_time($timestamp = null, $timezone = self::DEFAULT_TIMEZONE)
+    {   
+        if (!$timestamp)
+            $timestamp = round(microtime(true) * 1000);
+            
+        $com = "<time t='{$timestamp}' tz='{$timezone}'/>";
+        
+        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "SetTime", $com);
+        
+        $indexes = null;
+        $raw_response = null;
+        
+        $result = $this->get_parsed_response($raw_response, $indexes);
+
+        if (!$result)
+            return null;
+            
+        $set_time = $this->iq_complete_result($result);
+
+        if ($set_time)
+            $this->register_states($result, $indexes);            
+            
+        return $set_time;
+    }
+    
+    public function ping(&$raw_response = null)
+    {
+        $this->last_ping_request = round(microtime(true) * 1000);
+        $this->xmpp_client->iq->pingTo($this->xmpp_options->fullJid(), $this->full_jid);
+        
+        $indexes = null;
+        $raw_response = null;
+        
+        $result = $this->get_parsed_response($raw_response, $indexes);
+        $this->last_ping_response = round(microtime(true) * 1000);
+        
+        $this->is_available = null;
+        $this->last_ping_roundtrip = ($this->last_ping_response - $this->last_ping_request);
+                
+        if (!$result)
+            return null;
+            
+        $this->is_available = $this->iq_complete_result($result);
+        
+        if ($this->is_available)
+            $this->register_states($result, $indexes);
+        
+        return $this->is_available;
     }
     
     function __get($key)
@@ -90,7 +599,7 @@ class Device
         if (!isset($this->$key))
             return null;
             
-        if ($key == "xmpp")
+        if (substr($key, 0, 5) == "xmpp_")
             return null;
             
         return $this->$key;
@@ -104,7 +613,9 @@ class Device
         $this->nick = $nick;
         $this->company = $company;
         $this->resource = $resource;
-        $this->atom = $did."@".$class.".".$atom_domain."/".$resource;
+
+        $this->bare_jid = $did."@".$class.".".$atom_domain;
+        $this->full_jid = $this->bare_jid."/".$resource;
         
         $this->xmpp_client = $xmpp_client;
         $this->xmpp_options = $xmpp_options;

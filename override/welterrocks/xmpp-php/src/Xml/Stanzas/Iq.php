@@ -87,9 +87,9 @@ class Iq extends Stanza
         $this->socket->send($xml);
     }
     
-    public function command($from, $to, $todo, $command)
+    public function command($from, $to, $todo, $command = null)
     {
-        $ctl = "<ctl id='{$this->uniqueId()}' td='{$todo}'>{$command}</ctl>";
+        $ctl = "<ctl id='{$this->uniqueId()}' td='{$todo}'".(($command) ? ">{$command}</ctl>" : "/>");
         $query = "<query xmlns='com:ctl'>{$ctl}</query>";
         $xml = "<iq xmlns='jabber:client' type='set' from='{$from}' to='{$to}' id='{$this->uniqueId()}'>{$query}</iq>";
 
@@ -110,5 +110,13 @@ class Iq extends Stanza
         $xml = "<iq type='get' id='{$this->uniqueId()}'>{$query}</iq>";
 
         $this->socket->send($xml);
-    }
+    }    
+
+    public function session()
+    {
+        $query = '<session xmlns="urn:ietf:params:xml:ns:xmpp-session"/>';
+        $xml = "<iq type='set' id='{$this->uniqueId()}'>{$query}</iq>";
+
+        $this->socket->send($xml);
+    }    
 }

@@ -198,6 +198,18 @@ class Client
         return $result;
     }
     
+    public static function parse_response($xml, &$indexes = null)
+    {
+        $struct = null;
+        $indexes = null;
+        
+        $parser = xml_parser_create();
+        xml_parse_into_struct($parser, "<parse_response id='".md5(microtime(true))."'>".$xml."</parse_response>", $struct, $indexes);
+        xml_parser_free($parser);
+        
+        return $struct;
+    }
+    
     public function login(&$error = null)
     {
         $error = null;
@@ -466,7 +478,7 @@ class Client
             
         $this->xmpp_client->connect();
         
-        $result = trim(strip_tags($this->xmpp_client->getResponse()));
+        $result = $this->xmpp_client->getResponse();
         
         if (!$result)
         {
@@ -474,12 +486,30 @@ class Client
             
             return false;
         }
+        
+        $res = self::parse_response($result);
+        
+        if (!$res)
+        {
+            $error = "Unable to parse response";
             
-        $expected = md5("PLAIN".$this->config->user_uid."@".$this->config->api_realm."/".substr($this->config->device_id, 0, 8));
-            
-        if (md5($result) == $expected)
+            return false;
+        }
+        
+        $jid = null;
+        
+        foreach ($res as $xml)
+        {
+            if (($xml["tag"] == "JID") && ($xml["type"] == "complete"))
+            {
+                $jid = $xml["value"];
+                break;
+            }
+        }
+        
+        if ($jid == $this->xmpp_options->fullJid())
             $this->has_connected = true;
-            
+                    
         if (!$this->has_connected)
             $error = "Authentication failed";
         
