@@ -8,8 +8,9 @@
 
 This library uses PHP to connect to the Ecovacs API and let you control your
 Ecovacs based devices, like Deebot for example. You need an Ecovacs cloud
-account and a password to login. The library shows and let you control the
-supported and registered devices, linked to your account.
+account and a password to login or a local server like [Bumper](https://github.com/bmartin5692/bumper). 
+The library shows and let you control the supported and registered devices, 
+linked to your account.
 
 # Installation requirements and example
 
@@ -28,12 +29,17 @@ project root folder.
 
 # Library usage
 ## General information
-This library is in a very early development stage. For now, it can connect
-to the ecovacs cloud and list the registered devices. There is currently
-no way to control the devices. Use this lib with extreme care and do NOT
-use it for production environments right now. 
+This library is in an early development stage. You can use this library
+with the ecovacs cloud, to control your registered devices. Also it has
+been tested with [Bumper](https://github.com/bmartin5692/bumper), which
+is a great project by [Brian Martin](https://github.com/bmartin5692), giving you a local server for your bots.
+Use this lib with care and do NOT use it for production environments for now,
+because there is too much testing to do...Hope I can get you to give it a try.
 
 ## TODO's
 
-- **basics** - writing some code to control registered devices
-there is a lot of work to be done. The lib is in a pre-alpha stage and just can connect to the api and list some things.
+- **testing** - writing some testing routines for packaging
+currently there is only one working Example.php and no tests
+- **mqtt** - implement support for MQTT broker
+it is planned to implement a mqtt listener and a mqtt status daemon
+
