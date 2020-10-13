@@ -79,6 +79,8 @@ do not change the config file.
 If you have changed the config file to your needs, try your first shot with:
 
 ```
+cd sbin
+
 php EcoPhacs.php --list-devices
 ```
 
