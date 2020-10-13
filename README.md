@@ -13,6 +13,31 @@ The library shows and let you control the supported and registered devices,
 linked to your account. EcoPhacs has been written in PHP and is an alternative
 to the [Sucks](https://github.com/wpietri/sucks) project.
 
+# News
+- **2020-10-13** Added EcoPhacsD FIFO daemon.
+If you would like to have fast access to your bots and immidiate command reactions and responses,
+then this new daemon is probably what you are searching for. You need two FIFOs in /var/run, named
+`ecophacs-in.fifo` and `ecophacs-out.fifo`, which can be accessed by `EcoPhacsD.php` while running.
+The requirements to run the daemons are the same as for the EcoPhacs.php example (read below). To
+read, what the daemon outputs, connect to `/var/run/ecophacs-out.fifo`, for example with a `cat`
+command. To send commands write to `/var/run/ecophacs-in.fifo`, for example with the `echo`
+command line tool. The commands are send as `device-id:command:arg1,arg2,arg3,...`, where device-id
+is the DID of the bot. Also there are some special commands like `any:status`, `any:devicelist`.
+With the example below, you cat start the bot cleaning in auto mode. Commands are the same, as they
+apear as public functions in `Device.php`, without constructor or PHP internal class functions.
+Replace E000111122233344445 with the DID of your bot for testing. Status reports are automatically
+fetched and sent over the output FIFO, periodically. But remember, EcoPhacsD is an example only,
+which is meant to be a technological proof of concept and not for production use, currently.
+
+```
+cat /var/run/ecophacs-out.fifo
+
+echo "E000111122233344445:auto" > /var/run/ecophacs-in.fifo
+
+echo "E000111122233344445:stop" > /var/run/ecophacs-in.fifo
+```
+
+
 # Installation requirements
 
 Project requirements are given in `composer.json` (
