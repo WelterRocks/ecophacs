@@ -46,8 +46,28 @@ class CLI
     
     private $signals = null;
     private $callbacks = null;
+    private $redirects = null;
     
     private $child_pids = null;
+    
+    public const COLOR_DEFAULT = "\e[39m";
+    public const COLOR_EOL = "\e[0m";
+    public const COLOR_BLACK = "\e[30m";
+    public const COLOR_RED = "\e[31m";
+    public const COLOR_GREEN = "\e[32m";
+    public const COLOR_YELLOW = "\e[33m";
+    public const COLOR_BLUE = "\e[34m";
+    public const COLOR_MAGENTA = "\e[35m";
+    public const COLOR_CYAN = "\e[36m";
+    public const COLOR_LIGHT_GREY = "\e[37m";
+    public const COLOR_DARK_GREY = "\e[90m";
+    public const COLOR_LIGHT_RED = "\e[91m";
+    public const COLOR_LIGHT_GREEN = "\e[92m";
+    public const COLOR_LIGHT_YELLOW = "\e[93m";
+    public const COLOR_LIGHT_BLUE = "\e[94m";
+    public const COLOR_LIGHT_MAGENTA = "\e[95m";
+    public const COLOR_LIGHT_CYAN = "\e[96m";
+    public const COLOR_WHITE = "\e[97m";
     
     public function get_uid()
     {
@@ -228,6 +248,48 @@ class CLI
         return $retvals;
     }
     
+    public function handle_redirects(&$signal)
+    {
+        if (!is_array($this->redirects))
+            return $signal;
+            
+        if (isset($this->redirects[$signal]))
+            $signal = $this->redirects[$signal];
+            
+        return $signal;
+    }
+    
+    public function register_redirect($from_signal, $to_signal)
+    {
+        if (!is_array($this->redirects))
+            $this->redirects = array();
+            
+        $this->redirects[$from_signal] = $to_signal;
+    }
+    
+    public function unregister_redirect($from_signal)
+    {
+        if (!is_array($this->redirects))
+            return false;
+            
+        if (!isset($this->redirects[$from_signal]))
+            return false;
+            
+        unset($this->redirects[$from_signal]);
+        
+        return true;
+    }
+    
+    public function init_redirects()
+    {
+       $this->redirects = array(); 
+    }
+    
+    public function redirect_signal($from_signal, $to_signal)
+    {
+        return $this->register_redirect($from_signal, $to_signal);
+    }
+    
     public function handle_signal($signal)
     {
         switch ($signal)
@@ -238,6 +300,7 @@ class CLI
             case SIGKILL: // This should never happen, but...
                 exit;
             default:
+                $this->handle_redirects($signal);
                 $this->handle_callbacks($signal);
                 break;
         }
@@ -603,7 +666,7 @@ class CLI
         return true;
     }
     
-    public function read(&$str = null, $use_eol = null, $timeout = null)
+    public function read(&$str = null, $use_eol = null, $timeout = null, &$timeout_occured = null)
     {
         $str = null;
         
@@ -617,6 +680,7 @@ class CLI
             stream_set_blocking($fd, false);
             
             $timeout += time();
+            $timeout_occured = true;
             
             while ($timeout > time())
             {
@@ -626,7 +690,10 @@ class CLI
                 if ($use_eol)
                 {
                     if ($use_eol == $c)
+                    {
+                        $timeout_occured = false;
                         break;
+                    }
                 }                
             }
         }
@@ -658,7 +725,7 @@ class CLI
         return strlen($str);
     }
     
-    public function input($output = null, $timeout = null, $use_stderr = false, $output_eol = "", $input_eol = "\n", &$bytecount = null)
+    public function input($output = null, $timeout = null, $use_stderr = false, $output_eol = "", $input_eol = "\n", &$bytecount = null, &$timeout_occured = null)
     {
         $bytecount = null;
         $input = null;
@@ -666,9 +733,16 @@ class CLI
         if ($output)
             $this->write($output, $output_eol, $use_stderr);
             
-        $bytecount = $this->read($input, $input_eol, $timeout);
+        $bytecount = ($this->read($input, $input_eol, $timeout, $timeout_occured) - strlen($input_eol));
         
-        return $input;
+        return substr($input, 0, 0-strlen($input_eol));
+    }
+    
+    public function exit_error($errstr, $exit_code = 0)
+    {
+        $this->write($errstr, "\n", true);
+        
+        exit($exit_code);
     }
     
     function __construct($process_title = null)
@@ -717,6 +791,7 @@ class CLI
                 
         $this->init_signals();
         $this->init_callbacks();
+        $this->init_redirects();
     }
     
     function __destruct()
