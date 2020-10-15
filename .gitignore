@@ -17,7 +17,7 @@ npm-debug.log
 yarn-error.log
 .phpunit.result.cache
 .ecophacs-conf
-
+run/
 *.log
 *~
 

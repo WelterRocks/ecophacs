@@ -49,6 +49,12 @@ class CLI
     private $redirects = null;
     
     private $child_pids = null;
+    private $allow_zombies = null;   
+    private $parent_pid = null;
+    private $is_child = null;
+    
+    private $log_handle = null;
+    private $log_default_priority = null;
     
     public const COLOR_DEFAULT = "\e[39m";
     public const COLOR_EOL = "\e[0m";
@@ -68,6 +74,121 @@ class CLI
     public const COLOR_LIGHT_MAGENTA = "\e[95m";
     public const COLOR_LIGHT_CYAN = "\e[96m";
     public const COLOR_WHITE = "\e[97m";
+    
+    public static function proc_is_running($pid)
+    {
+        if (!$pid)
+            return null;
+        
+        return posix_getpgid($pid);
+    }
+    
+    public static function set_pidfile($pidfile, $pid, $force = false)
+    {
+        if ((!$force) && (file_exists($pidfile)))
+        {
+            $oldpid = self::get_pid_from_pidfile($pidfile);
+            
+            if ($oldpid != $pid)
+            {
+                if (self::proc_is_running($oldpid))
+                    return false;
+            }
+        }
+
+        $fd = @fopen($pidfile, "w");
+        
+        if (!is_resource($fd))
+            return false;
+            
+        @fwrite($fd, $pid."\n");
+        @fclose($fd);
+        
+        return $pid;
+    }
+    
+    public static function get_pid_from_pidfile($pidfile)
+    {
+        if (!file_exists($pidfile))
+            return false;
+
+        $fd = @fopen($pidfile, "r");
+        
+        if (!is_resource($fd))
+            return false;
+            
+        $pid = (int)trim(@fgets($fd, 64));
+        @fclose($fd);
+        
+        return $pid;
+    }
+    
+    public static function check_pid_from_pidfile($pidfile, &$pid = null)
+    {
+        $pid = self::get_pid_from_pidfile($pidfile);
+        
+        if (!$pid)
+            return false;
+            
+        if (self::proc_is_running($pid))
+            return true;
+            
+        return false;
+    }
+    
+    public static function remove_pidfile($pidfile, $force = false)
+    {        
+        if (!file_exists($pidfile))
+            return true;
+        
+        if (!$force)
+        {   
+            if (self::check_pid_from_pidfile($pidfile))
+                return false;
+        }
+            
+        @unlink($pidfile);
+        
+        return true;
+    }
+    
+    public function init_log($facility = null, $options = null, $default_priority = null)
+    {
+        if ($this->log_handle)
+            return false;
+            
+        if (!$options)
+            $options = LOG_CONS | LOG_NDELAY | LOG_PID;
+            
+        if (!$facility)
+            $facility = LOG_USER;
+            
+        if (!$default_priority)
+            $this->log_default_priority = LOG_INFO;
+        else
+            $this->log_default_priority = $default_priority;
+            
+        $this->log_handle = openlog($this->process_title, $options, $facility);
+        
+        return $this->log_handle;
+    }
+    
+    public function log($message, $priority = null)
+    {
+        if (!$this->log_handle)
+            return false;
+            
+        if (!$priority)
+            $priority = $this->log_default_priority;
+            
+        return syslog($priority, $message);
+    }
+    
+    public function close_log()
+    {
+        if ($this->log_handle)
+            closelog();
+    }
     
     public function get_uid()
     {
@@ -216,6 +337,8 @@ class CLI
     
     public function handle_callbacks($signal)
     {
+        // Callback handler currently not working
+        // Needs to be analyzed and fixed, but not yet ;-) good night
         $callbacks = $this->get_callback($signal);
         
         if ((!$callbacks) || (!is_array($callbacks)) || (count($callbacks) == 0))
@@ -242,7 +365,7 @@ class CLI
             }
         }
         
-        if (count($retval) == 0)
+        if (count($retvals) == 0)
             return null;
         
         return $retvals;
@@ -296,7 +419,8 @@ class CLI
         {
             case SIGTERM:
                 $this->handle_callbacks($signal);
-                exit;
+                break;
+            case SIGSEGV: // This should never happen, but...
             case SIGKILL: // This should never happen, but...
                 exit;
             default:
@@ -311,9 +435,10 @@ class CLI
         if (!is_array($this->signals))
             $this->init_signals();
         
-        // Never register SIGKILL
+        // Never register SIGKILL and SIGSEGV
         switch($signal)
         {
+            case SIGSEGV:
             case SIGKILL:
                 return false;
         }
@@ -330,9 +455,10 @@ class CLI
         if (!is_array($this->signals))
             $this->init_signals();
         
-        // Never unregister SIGKILL
+        // Never unregister SIGKILL and SIGSEGV
         switch ($signal)
         {
+            case SIGSEGV:
             case SIGKILL:
                 return false;
         }
@@ -349,10 +475,11 @@ class CLI
         if (!is_array($this->signals))
             $this->init_signals();
         
-        // Never ignore SIGTERM and SIGKILL
+        // Never ignore SIGTERM, SIGKILL and SIGSEGV
         switch ($signal)
         {
             case SIGTERM:
+            case SIGSEGV:
             case SIGKILL:
                 return false;
         }
@@ -392,7 +519,7 @@ class CLI
         return true;
     }
     
-    public function register_callback($signal, $identifier, $priority = 0, Callback $callback = null)
+    public function register_callback($signal, $identifier, $priority, Callback $callback)
     {
         if (!isset($this->callbacks[$signal]))
             $this->callbacks[$signal] = array();
@@ -401,7 +528,7 @@ class CLI
             $this->callbacks[$signal][$priority] = new \stdClass;
             
         if (!isset($this->callbacks[$signal][$priority]->$identifier))
-            $this->callbacks[$signal]->$identifier = $callback;
+            $this->callbacks[$signal][$priority]->$identifier = $callback;
             
         return $this->callbacks[$signal];
     }
@@ -523,7 +650,7 @@ class CLI
         return $this->set_alarm(0);
     }
     
-    public function dispatch()
+    public function signals_dispatch()
     {
         return pcntl_signal_dispatch();
     }
@@ -553,7 +680,7 @@ class CLI
         return $this->trigger_signal(SIGKILL, $errno, $errstr);
     }
     
-    public function fork($identifier, $wait = false, &$status = null)
+    public function fork($identifier, callable $mother_callback, callable $child_callback, $wait = false, &$status = null)
     {
         $status = null;
         
@@ -582,13 +709,18 @@ class CLI
             if ($wait)
                 pcntl_wait($status);
                 
-            return true;
+            return call_user_func($mother_callback);
         }
         else
         {            
             $status = 0;
             
-            return $parent_pid;
+            $this->is_child = true;
+            $this->parent_pid = $parent_pid;
+            
+            $this->initialize();
+            
+            return call_user_func($child_callback);
         }
     }
     
@@ -745,16 +877,46 @@ class CLI
         exit($exit_code);
     }
     
-    function __construct($process_title = null)
+    public function allow_zombies()
     {
-        global $argc, $argv;
-        
+        $this->allow_zombies = true;
+    }
+    
+    public function disallow_zombies()
+    {
+        $this->allow_zombies = false;
+    }
+    
+    public function zombies_allowed()
+    {
+        return $this->allow_zombies;
+    }
+    
+    public function is_child()
+    {
+        return $this->is_child;
+    }
+    
+    public function get_parent_pid()
+    {
+        return $this->parent_pid;
+    }
+    
+    private function initialize()
+    {
         $this->timestamp = round((microtime(true) * 1000));
         
         $this->pid = getmypid();
         $this->uid = getmyuid();
-        $this->gid = getmygid();
+        $this->gid = getmygid();    
+    }
+    
+    function __construct($process_title = null)
+    {
+        global $argc, $argv;
         
+        $this->initialize();
+                
         if ($process_title)
             $this->set_process_title($process_title);
         
@@ -792,10 +954,16 @@ class CLI
         $this->init_signals();
         $this->init_callbacks();
         $this->init_redirects();
+        
+        $this->allow_zombies = false;
+        $this->is_child = false;
     }
     
     function __destruct()
     {
-        $this->kill_child();        
+        if (!$this->allow_zombies)
+            $this->kill_child();
+            
+        $this->close_log();
     }
 }

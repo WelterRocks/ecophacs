@@ -23,89 +23,112 @@
 // Initialize autoloading
 use WelterRocks\EcoPhacs\Client;
 use WelterRocks\EcoPhacs\Device;
+use WelterRocks\EcoPhacs\Callback;
+use WelterRocks\EcoPhacs\CLI;
 
-// Check, whether we are on cli
-if ((!isset($argc)) || (!isset($argv)) && (!is_array($argv)))
-{
-    echo "Not on CLI. Exitting\n";
-    exit(1);
-}
+// FIFO, config and PID file settings
+define("PROG_NAME", "EcoPhacsDaemon");
+define("RUN_DIR", __DIR__."/../run");
+define("PID_FILE", RUN_DIR."/".PROG_NAME.".pid");
 
-// Try to load the config file
+define("SOCKET_IN", RUN_DIR."/ecophacs-in.fifo");
+define("SOCKET_OUT", RUN_DIR."/ecophacs-out.fifo");
+define("SOCKET_PERM", "0666");
+
 define("HOME_DIR", getenv("HOME"));
 define("CONF_DIR", "/etc/ecophacs");
 
-if ((is_dir(CONF_DIR)) && (file_exists(CONF_DIR."/ecophacs.conf")))
-    $config_file = CONF_DIR."/ecophacs.conf";
-else
-    $config_file = HOME_DIR."/.ecophacsrc";
-
-if ($config_file == HOME_DIR."/.ecophacsrc")
-{
-    if ((!is_dir(HOME_DIR)) || (!file_exists(HOME_DIR."/.ecophacsrc")))
-        define("CONFIG_MODE", true);
-}
-    
-if ((defined("CONFIG_MODE")) || (strstr(implode("", file($config_file)), "put-your@email.here")))
-{
-    if (!is_dir(HOME_DIR))
-    {
-        echo "Missing home directory '".HOME_DIR."'\n";
-        exit(1);
-    }
-    
-    $fd = @fopen($config_file, "w");
-    
-    if (!is_resource($fd))
-    {
-        echo "Unable to open configuration file '".$config_file."'\n";
-        exit(2);
-    }
-    
-    @fwrite($fd, "device_id=".md5(microtime(true))."\n");
-    @fwrite($fd, "continent=eu\n");
-    @fwrite($fd, "country=de\n");
-    @fwrite($fd, "account_id=put-your@email.here\n");
-    @fwrite($fd, "password_hash=YOUR-CLEARTEXT-PASSWORD-HERE\n");
-    @fclose($fd);
-    
-    echo "A configuration file has been written to '".$config_file."'.\n";
-    echo "A device_id has been generated for you and you only\n";
-    echo "have to change account_id and password_hash to your needs.\n";
-    echo "Dont be confused about 'password_hash'. You must insert your\n";
-    echo "password in cleartext. It is automatically hashed and encoded\n";
-    echo "after the first use. If you are not within germany and/or EU\n";
-    echo "you have to adapt the continent and country codes to your needs.\n";
-    echo "If you would like to have a global configuration file, move this\n";
-    echo "file to /etc/ecophacs/ecophacs.conf after changing its contents.\n";
-    
-    exit(3);
-}
-
-echo "Bringing up daemon...";
-
-// Setting up fifo sockets
-define("SOCKET_DIR", "/var/run");
-define("SOCKET_IN", SOCKET_DIR."/ecophacs-in.fifo");
-define("SOCKET_OUT", SOCKET_DIR."/ecophacs-out.fifo");
-define("SOCKET_PERM", "0600");
-
+// Handles, bools and tick counters
 $fifo_in = null;
 $fifo_out = null;
 
+$daemon_terminate = false;
+$worker_reload = false;
+
+$ticks_state = 0;
+$ticks_lifespans = 0;
+$ticks_output = 0;
+
+$public_functions = null;
+
+// Create CLI object
+try
+{
+    $cli = new CLI(PROG_NAME);
+}
+catch (exception $ex)
+{
+    echo "FATAL ERROR: ".$ex->message."\n";
+    exit(255);
+}
+
+// Trap signals for mother
+$cli->register_signal(SIGTERM);
+$cli->redirect_signal(SIGHUP, SIGTERM);
+$cli->redirect_signal(SIGUSR1, SIGTERM);
+$cli->redirect_signal(SIGUSR2, SIGTERM);
+$cli->redirect_signal(SIGINT, SIGTERM);
+
+// Worker reload callback
+function worker_reload_callback()
+{
+    global $worker_reload, $cli;
+    
+    $cli->log("Received HUP signal, initiating worker reload", LOG_INFO);
+
+    $worker_reload = true;
+    
+    return;
+}
+
+// Daemon terminate callback
+function daemon_terminate_callback()
+{
+    global $daemon_terminate, $worker_reload, $cli;
+    
+    $cli->log("Received TERM signal, initiating daemon shutdown", LOG_INFO);
+    
+    $daemon_terminate = true;
+    $worker_reload = true;
+        
+    return;
+}
+
+// Select config file function
+function select_config_file()
+{
+    if ((is_dir(CONF_DIR)) && (file_exists(CONF_DIR."/ecophacs.conf")))
+        $config_file = CONF_DIR."/ecophacs.conf";
+    else
+        $config_file = HOME_DIR."/.ecophacsrc";
+
+    if ($config_file == HOME_DIR."/.ecophacsrc")
+    {
+        if ((!is_dir(HOME_DIR)) || (!file_exists(HOME_DIR."/.ecophacsrc")))
+	    return false;
+    }
+    
+    return $config_file;
+}
+
+// Setting FIFO handles and functions
 function fifo_shutdown()
 {
-    global $fifo_in, $fifo_out;
+    global $fifo_in, $fifo_out, $cli;
     
     if (is_resource($fifo_in))
         @fclose($fifo_in);
         
     if (is_resource($fifo_out))
         @fclose($fifo_out);
+
+    $cli->log("Shutdown point reached. Bye.", LOG_INFO);
 }
 
 function touch_fifo($file)
 {
+    global $cli;
+    
     if (!file_exists($file))
     {
         if (!function_exists("posix_mkfifo"))
@@ -115,122 +138,48 @@ function touch_fifo($file)
     }
     
     if (!file_exists($file))
-    {
-        echo "Unable to create fifo sockets.\n";
-        exit(8);
-    }    
+        $cli->exit_error("Unable to create fifo sockets", 2);
 }
 
-if (!is_dir(SOCKET_DIR))
+// Initialize FIFO function
+function fifo_initialize()
 {
-    echo "Missing socket directory '".SOCKET_DIR."'.\n";
-    exit(7);
-}
-
-touch_fifo(SOCKET_IN);
-touch_fifo(SOCKET_OUT);
-
-register_shutdown_function("fifo_shutdown");
-
-$fifo_in = @fopen(SOCKET_IN, "r+");
-
-if (!is_resource($fifo_in))
-{
-    echo "Unable to open '".SOCKET_IN."', permission denied.\n";
-    exit(10);
-}
-
-$fifo_out = @fopen(SOCKET_OUT, "w+");
-
-if (!is_resource($fifo_out))
-{
-    echo "Unable to open '".SOCKET_OUT."', permission denied.\n";
-    exit(11);
-}
-
-stream_set_blocking($fifo_in, false);
-stream_set_blocking($fifo_out, false);
-
-// Create the client (main) object
-$ecovacs = new Client($config_file);
-
-// Initialize error string store
-$error = null;
-
-// Try to login, if not yet done, otherwise fetch device list
-if (!$ecovacs->try_login($error))
-{
-    echo "Unable to login: ".$error."\n";
-    exit(4);
-}
-
-// Try to connect to API server
-if (!$ecovacs->try_connect($error))
-{
-    echo "Unable to connect to server.\nERROR: ".$error."\n";
-    exit(5);
-}
-
-// Get device list and indexes by device id => device name and do the magic
-$indexes = null;
-$devices = $ecovacs->get_device_list($indexes);
-
-// Check, whether there are existing devices
-if ((!is_array($indexes)) || (!count($indexes)))
-{
-    echo "No registered device found. Waiting 10 seconds before exitting...";
-    sleep(10);
-    echo "BYE!\n";
-
-    exit(6);
-}
-
-// Get the first device
-$first_device = null;
-
-foreach ($devices as $did => $dev)
-{
-    $first_device = $did;
-    break;
-}
-
-// Get all public functions from Device class
-$public_functions = array();
-
-foreach (get_class_methods($devices[$first_device]) as $f)
-{
-    // Filter constructor, set, etc.
-    if (substr($f, 0, 2) == "__")
-        continue;
-        
-    // Filter to_json function
-    if ($f == "to_json")
-        continue;
-        
-    array_push($public_functions, $f);
-}
-
-// Start the processing loop
-$ticks_state = 0;
-$ticks_lifespans = 0;
-$ticks_output = 0;
-
-// Initialize statuses
-foreach ($devices as $dev)
-{
-    $dev->get_clean_state();
-    $dev->get_charge_state();
-    $dev->get_battery_info();            
+    global $cli, $fifo_in, $fifo_out;
     
-    $dev->get_lifespan(Device::COMPONENT_BRUSH);
-    $dev->get_lifespan(Device::COMPONENT_SIDE_BRUSH);
-    $dev->get_lifespan(Device::COMPONENT_DUST_CASE_HEAP);
+    if (!is_dir(RUN_DIR))
+        $cli->log("Missing socket directory '".RUN_DIR."'", LOG_EMERG);
+
+    touch_fifo(SOCKET_IN);
+    touch_fifo(SOCKET_OUT);
+
+    register_shutdown_function("fifo_shutdown");
+
+    $fifo_in = @fopen(SOCKET_IN, "r+");
+
+    if (!is_resource($fifo_in))
+        $cli->log("Unable to open incoming FIFO '".SOCKET_IN."', permission denied", LOG_EMERG);
+
+    $fifo_out = @fopen(SOCKET_OUT, "w+");
+
+    if (!is_resource($fifo_out))
+        $cli->log("Unable to open outgoing FIFO '".SOCKET_OUT."', permission denied", LOG_EMERG);
+
+    stream_set_blocking($fifo_in, false);
+    stream_set_blocking($fifo_out, false);
+    
+    return;
 }
 
-echo "READY\n";
-
-while (true)
+// Worker loop
+function worker_loop(Client $ecovacs, $devices)
 {
+    global $ticks_state, $ticks_lifespans, $ticks_output;
+    global $cli, $fifo_in, $fifo_out, $public_functions;
+    global $worker_reload, $daemon_terminate;
+    
+    // Dispatch signals in inner loop
+    $cli->signals_dispatch();
+
     $ticks_state++;
     $ticks_lifespans++;
     $ticks_output++;
@@ -246,8 +195,6 @@ while (true)
         }
         
         $ticks_state = 0;
-        
-        echo "REQUEST STATUS\n";
     }
     
     if ($ticks_lifespans == 100000)
@@ -280,14 +227,14 @@ while (true)
     $incoming_message = trim(@fread($fifo_in, 1024));
     
     if (!$incoming_message)
-        continue;
+        return;
         
     // Split device, command and args (format: IDOFDEVICE01234:command:arg1,arg2,...)
     $fields = explode(":", $incoming_message, 3);
     $device_id = $fields[0];
     
     if (!isset($fields[1]))
-        continue;
+        return;
     
     $command = $fields[1];
     
@@ -299,8 +246,10 @@ while (true)
     // Check for valid command
     if (in_array($command, $public_functions))
     {
+        $cli->log("Received command '".$command."' for device '".$device_id."'", LOG_INFO);
+        
         if (!isset($devices[$device_id]))
-            continue;
+            return;
             
         $result = call_user_func_array(array($devices[$device_id], $command), $arguments);
         
@@ -311,8 +260,23 @@ while (true)
         
         unset($result);
     }
+    elseif (($device_id == "local") && ($command == "exit"))
+    {
+        $cli->log("Received local exit command", LOG_INFO);
+        
+        $worker_reload = true;
+        $daemon_terminate = true;
+    }
+    elseif (($device_id == "local") && ($command == "reload"))
+    {
+        $cli->log("Received local reload command", LOG_INFO);
+        
+        $worker_reload = true;
+    }
     elseif (($device_id == "any") && ($command == "devicelist"))
     {
+        $cli->log("Received devicelist request", LOG_INFO);
+        
         foreach ($devices as $did => $dev)
         {
             @fwrite($fifo_out, json_encode(array("DID" => $dev->did, "nickname" => $dev->nick))."\n");
@@ -320,17 +284,23 @@ while (true)
     }    
     elseif (($device_id == "any") && ($command == "status"))
     {
+        $cli->log("Received status request for devices in json format", LOG_INFO);
+        
         foreach ($devices as $did => $dev)
         {
             @fwrite($fifo_out, $dev->to_json()."\n");
         }
     }
-    elseif ($command == "ticks")
+    elseif (($device_id == "local") && ($command == "ticks"))
     {
+        $cli->log("Received local ticks status request", LOG_INFO);
+        
         @fwrite($fifo_out, json_encode(array("result" => "ticks", "state" => $ticks_state, "lifespans" => $ticks_lifespans, "output" => $ticks_output))."\n");
     }
     else
     {
+        $cli->log("Received unknown command '".$command."' for device id '".$device_id."'", LOG_WARNING);
+
         @fwrite($fifo_out, json_encode(array("error" => "Unknown command ".$command))."\n");
     }
     
@@ -340,9 +310,182 @@ while (true)
     unset($device_id);
     unset($fields);
     unset($incoming_message);
+
+    return;
 }
 
-// We should never reach this point
-echo "Mainloop kickout, doing suicide :-(\n";
-fifo_shutdown();
-exit(255);
+// Mother callback is triggered, when child is starting up
+function mother()
+{
+    global $cli;
+    
+    $cli->write(CLI::COLOR_WHITE."Bringing up ".CLI::COLOR_LIGHT_YELLOW.PROG_NAME.CLI::COLOR_WHITE."...".CLI::COLOR_EOL, "");
+    sleep(2);
+    $cli->write(CLI::COLOR_LIGHT_GREEN."done".CLI::COLOR_EOL);
+    
+    return;
+}
+
+// Daemon callback does the hard part
+function daemon()
+{
+    global $cli, $fifo_in, $fifo_out, $public_functions;
+    global $daemon_terminate, $worker_reload;
+    
+    // Set sync signal handling
+    $cli->set_async_signals(false);
+    
+    // Force rewrite of PID file to set childs PID
+    $cli->set_pidfile(PID_FILE, $cli->get_pid(), true);
+    
+    // Create callbacks
+    $callback_daemon_terminate = new Callback("DaemonTerminate", 100, "daemon_terminate_callback");
+    $callback_worker_reload = new Callback("WorkerReload", 100, "worker_reload_callback");
+    
+    // Register callbacks
+    $cli->register_callback(SIGTERM, "DaemonTerminate", 100, $callback_daemon_terminate);
+    $cli->register_callback(SIGHUP, "WorkerReload", 100, $callback_worker_reload);
+    
+    // Trap signals for daemon use and clear redirects
+    $cli->init_redirects();
+    $cli->register_signal(SIGTERM);
+    $cli->register_signal(SIGHUP);
+    $cli->redirect_signal(SIGINT, SIGTERM);
+    
+    // Initialize logger
+    $cli->init_log(LOG_DAEMON);
+    
+    // Initialize FIFOs
+    fifo_initialize();
+    
+    // Say hello to the log
+    $cli->log(PROG_NAME." is starting up", LOG_INFO);
+    
+    // Daemon loop
+    while (!$daemon_terminate)
+    {
+        // Create the client (main) object
+        $ecovacs = new Client(select_config_file());
+
+        // Initialize error string store
+        $error = null;
+        
+        // Dispatch signals in outer loop
+        $cli->signals_dispatch();
+
+        // Try to login, if not yet done, otherwise fetch device list
+        if (!$ecovacs->try_login($error))
+        {
+            $cli->log("Unable to login: ".$error, LOG_ALERT);
+        
+            sleep(10);
+            
+            continue;
+        }
+
+        // Try to connect to API server
+        if (!$ecovacs->try_connect($error))
+        {
+            $cli->log("Unable to connect to server: ".$error, LOG_ALERT);
+            
+            sleep(10);
+            
+            continue;
+        }
+        
+        // Get device list and indexes by device id => device name and do the magic
+        $indexes = null;
+        $devices = $ecovacs->get_device_list($indexes);
+        
+        // Check, whether there are existing devices
+        if ((!is_array($indexes)) || (!count($indexes)))
+        {
+            $cli->log("No registered device found, yet", LOG_WARNING);
+            
+            sleep(10);
+
+            continue;
+        }
+
+        // Get the first device
+        $first_device = null;
+
+        foreach ($devices as $did => $dev)
+        {
+            $first_device = $did;
+            break;
+        }
+
+        // Get all public functions from Device class
+        $public_functions = array();
+
+        foreach (get_class_methods($devices[$first_device]) as $f)
+        {
+            // Filter constructor, set, etc.
+            if (substr($f, 0, 2) == "__")
+                continue;
+        
+            // Filter to_json function
+            if ($f == "to_json")
+                continue;
+            
+            array_push($public_functions, $f);
+        }
+
+        // Initialize devices status
+        foreach ($devices as $dev)
+        {
+            $dev->get_clean_state();
+            $dev->get_charge_state();
+            $dev->get_battery_info();
+            
+            usleep(500);
+    
+            $dev->get_lifespan(Device::COMPONENT_BRUSH);
+            $dev->get_lifespan(Device::COMPONENT_SIDE_BRUSH);
+            $dev->get_lifespan(Device::COMPONENT_DUST_CASE_HEAP);
+            
+            usleep(500);
+        }
+        
+        // Send info to log, if inner worker loop begins
+        $cli->log("Reached inner worker loop. Ready to serve :-)", LOG_INFO);
+
+        // The worker loop
+        while (!$worker_reload) worker_loop($ecovacs, $devices);
+    
+        // Send info to log, if inner worker loop breaks
+        $cli->log("Left inner worker loop. Reloading.", LOG_INFO);
+    
+        // Reset worker reload
+        $worker_reload = false;
+        
+        // Wait a second before reloop
+        sleep(1);
+    }
+    
+    // Send info to log, if outer loop breaks
+    $cli->log("Left outer daemon loop. Waiting for shutdown.", LOG_INFO);
+    
+    sleep(5);
+        
+    fifo_shutdown();
+    $cli->remove_pidfile(PID_FILE, true);
+        
+    return;
+}
+        
+// Check for existing pid file and bound service
+$pid = null;
+
+if ($cli->check_pid_from_pidfile(PID_FILE, $pid))
+    $cli->exit_error(CLI::COLOR_LIGHT_RED."Another instance of ".CLI::COLOR_LIGHT_YELLOW.PROG_NAME.CLI::COLOR_LIGHT_RED." is running at PID ".CLI::COLOR_LIGHT_GREEN.$pid.CLI::COLOR_EOL, 2);
+elseif (!$cli->set_pidfile(PID_FILE, $cli->get_pid()))
+    $cli->exit_error(CLI::COLOR_LIGHT_RED."Unable to write PID file '".CLI::COLOR_LIGHT_YELLOW.PID_FILE.CLI::COLOR_LIGHT_RED."'".CLI::COLOR_EOL, 3);
+    
+// Daemonize (fork) and prevent mother from killing her childs
+$cli->allow_zombies();
+$cli->fork("daemon", "mother", "daemon");
+
+// Thank you and now, your applause :-)
+exit;
