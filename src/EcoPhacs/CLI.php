@@ -337,31 +337,29 @@ class CLI
     
     public function handle_callbacks($signal)
     {
-        // Callback handler currently not working
-        // Needs to be analyzed and fixed, but not yet ;-) good night
         $callbacks = $this->get_callback($signal);
-        
+    
         if ((!$callbacks) || (!is_array($callbacks)) || (count($callbacks) == 0))
             return null;
             
         krsort($callbacks);
         
         $retvals = array();
-            
+
         foreach ($callbacks as $priority => $callbacklist)
         {
-            if ((!$callbacklist) || (!is_array($callbacklist)) || (count($callbacklist) == 0))
+            if ((!$callbacklist) || (!is_object($callbacklist)))
                 continue;
-                
+         
             if (!isset($retvals[$priority]))
                 $retvals[$priority] = new \stdClass;
                 
-            foreach ($callbacklist as $callback)
-            {
-                if (!isset($retvals[$priority]->$callback))
-                    $retvals[$priority]->$callback = null;
+            foreach ($callbacklist as $identifier => $callback)
+            {                
+                if (!isset($retvals[$priority]->$identifier))
+                     $retvals[$priority]->$identifier = null;
                     
-                $retvals[$priority]->$callback = $callback->execute();
+                $retvals[$priority]->$identifier = $callback->execute();            
             }
         }
         
