@@ -29,7 +29,7 @@ use WelterRocks\EcoPhacs\CLI;
 
 // FIFO, config and PID file settings
 define("PROG_NAME", "EcoPhacsDaemon");
-define("RUN_DIR", __DIR__."/../run");
+define("RUN_DIR", "/run/ecophacs");
 define("PID_FILE", RUN_DIR."/".PROG_NAME.".pid");
 
 define("SOCKET_IN", RUN_DIR."/ecophacs-in.fifo");
@@ -509,7 +509,7 @@ elseif ($cli->has_argument("stop"))
         
     $cli->write(CLI::COLOR_WHITE."Stopping ".CLI::COLOR_LIGHT_YELLOW.PROG_NAME.CLI::COLOR_WHITE." with PID ".CLI::COLOR_LIGHT_RED.$pid.CLI::COLOR_WHITE."...".CLI::COLOR_EOL, "");
     $cli->trigger_signal_to($pid, SIGTERM);    
-    sleep(10);
+    sleep(3);
     $cli->write(CLI::COLOR_LIGHT_GREEN."OK".CLI::COLOR_EOL);    
 }
 elseif ($cli->has_argument("reload"))
@@ -522,7 +522,7 @@ elseif ($cli->has_argument("reload"))
         
     $cli->write(CLI::COLOR_WHITE."Reloading ".CLI::COLOR_LIGHT_YELLOW.PROG_NAME.CLI::COLOR_WHITE." with PID ".CLI::COLOR_LIGHT_RED.$pid.CLI::COLOR_WHITE."...".CLI::COLOR_EOL, "");
     $cli->trigger_signal_to($pid, SIGHUP);    
-    sleep(10);
+    sleep(3);
     $cli->write(CLI::COLOR_LIGHT_GREEN."OK".CLI::COLOR_EOL);    
 }
 elseif ($cli->has_argument("status"))

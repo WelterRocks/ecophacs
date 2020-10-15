@@ -121,6 +121,16 @@ else
 	exit 8
 fi
 
+echo -n "Creating configuration directory..."
+mkdir /etc/ecophacs >/dev/null 2>&1
+echo "done"
+
+echo -n "Creating daemon FIFOs..."
+mkdir /run/ecophacs >/dev/null 2>&1
+mkfifo -m 666 /run/ecophacs/ecophacs-in.fifo >/dev/null 2>&1
+mkfifo -m 666 /run/ecophacs/ecophacs-out.fifo >/dev/null 2>&1
+echo "done"
+
 systemctl=`which systemctl`
 
 if [ "$systemctl" != "" ]; then
@@ -137,4 +147,8 @@ echo "Installing requirements in $install_to"
 cd $install_to
 $composer install
 
-echo "EcoPhacs installation done"
+echo "EcoPhacs installation done."
+echo "Before you begin, run EcoPhacs-Configure.php to setup your credentials."
+echo "After credentials where set and written, move ~/.ecophacsrc to /etc/ecophacs/ecophacs.conf"
+
+
