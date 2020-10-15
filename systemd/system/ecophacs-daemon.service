@@ -1,11 +1,17 @@
 [Unit]
 Description=The EcoPhacs-Daemon is the interface between your console and your bots via ecovacs API
-After=Network
+After=network.target remote-fs.target nss-lookup.target
+ConditionPathIsDirectory=/etc/ecophacs-%i
+Documentation=https://github.com/WelterRocks/ecophacs
 
 [Service]
-ExecStart=/usr/sbin/foo-daemon
 Type=forking
-ExecStart=/usr/local/lib/php
+Environment=ECOPHACS_CONFDIR=/etc/ecophacs-%i ECOPHACS_DAEMON_STARTED_BY_SYSTEMD=true
+ExecStart=/usr/local/sbin/EcoPhacs-Daemon.php start
+ExecStop=/usr/local/sbin/EcoPhacs-Daemon.php stop
+ExecReload=/usr/local/sbin/EcoPhacs-Daemon.php reload
+PrivateTmp=true
+Restart=on-abort
 
 [Install]
 WantedBy=multi-user.target

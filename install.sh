@@ -106,6 +106,21 @@ if [ "$install_status" = "0" ]; then
 	exit 7
 fi
 
+linking_done=1
+echo -n "Linking programs..."
+for file in `ls -1 $install_to/sbin`; do
+	ln -sf "$install_to/sbin/$file" /usr/local/sbin/ >/dev/null 2>&1 || linking_done=0
+done
+
+if [ "$linking_done" = "1" ]; then
+	echo "done"
+else
+	echo "failed"
+	echo "Unable to link programs in '/usr/local/sbin'."
+	echo "Check permissions and directory structure. Installation aborted."
+	exit 8
+fi
+
 systemctl=`which systemctl`
 
 if [ "$systemctl" != "" ]; then
@@ -121,3 +136,5 @@ fi
 echo "Installing requirements in $install_to"
 cd $install_to
 $composer install
+
+echo "EcoPhacs installation done"

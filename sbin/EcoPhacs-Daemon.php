@@ -51,6 +51,8 @@ $ticks_output = 0;
 
 $public_functions = null;
 
+$pid = null;
+
 // Create CLI object
 try
 {
@@ -68,6 +70,14 @@ $cli->redirect_signal(SIGHUP, SIGTERM);
 $cli->redirect_signal(SIGUSR1, SIGTERM);
 $cli->redirect_signal(SIGUSR2, SIGTERM);
 $cli->redirect_signal(SIGINT, SIGTERM);
+
+// Usage
+function usage()
+{
+    global $cli;
+    
+    $cli->exit_error(CLI::COLOR_LIGHT_RED."Usage: ".CLI::COLOR_WHITE.$cli->get_command().CLI::COLOR_LIGHT_CYAN." start|stop|reload|status".CLI::COLOR_EOL, 1);
+}
 
 // Worker reload callback
 function worker_reload_callback()
@@ -453,7 +463,7 @@ function daemon()
 
         // The worker loop
         while (!$worker_reload) worker_loop($ecovacs, $devices);
-    
+        
         // Send info to log, if inner worker loop breaks
         $cli->log("Left inner worker loop. Reloading.", LOG_INFO);
     
@@ -474,18 +484,60 @@ function daemon()
         
     return;
 }
-        
-// Check for existing pid file and bound service
-$pid = null;
 
-if ($cli->check_pid_from_pidfile(PID_FILE, $pid))
-    $cli->exit_error(CLI::COLOR_LIGHT_RED."Another instance of ".CLI::COLOR_LIGHT_YELLOW.PROG_NAME.CLI::COLOR_LIGHT_RED." is running at PID ".CLI::COLOR_LIGHT_GREEN.$pid.CLI::COLOR_EOL, 2);
-elseif (!$cli->set_pidfile(PID_FILE, $cli->get_pid()))
-    $cli->exit_error(CLI::COLOR_LIGHT_RED."Unable to write PID file '".CLI::COLOR_LIGHT_YELLOW.PID_FILE.CLI::COLOR_LIGHT_RED."'".CLI::COLOR_EOL, 3);
+// Check usage
+if ($cli->has_argument("start"))
+{
+    // Check for existing pid file and bound service
+    if ($cli->check_pid_from_pidfile(PID_FILE, $pid))
+        $cli->exit_error(CLI::COLOR_LIGHT_RED."Another instance of ".CLI::COLOR_LIGHT_YELLOW.PROG_NAME.CLI::COLOR_LIGHT_RED." is running at PID ".CLI::COLOR_LIGHT_GREEN.$pid.CLI::COLOR_EOL, 2);
+    elseif (!$cli->set_pidfile(PID_FILE, $cli->get_pid()))
+        $cli->exit_error(CLI::COLOR_LIGHT_RED."Unable to write PID file '".CLI::COLOR_LIGHT_YELLOW.PID_FILE.CLI::COLOR_LIGHT_RED."'".CLI::COLOR_EOL, 3);
     
-// Daemonize (fork) and prevent mother from killing her childs
-$cli->allow_zombies();
-$cli->fork("daemon", "mother", "daemon");
-
+    // Daemonize (fork) and prevent mother from killing her childs
+    $cli->allow_zombies();
+    $cli->fork("daemon", "mother", "daemon");
+}
+elseif ($cli->has_argument("stop"))
+{
+    // Get PID, if one and send SIGTERM to stop
+    $pid = CLI::get_pid_from_pidfile(PID_FILE);
+    
+    if (!$pid)
+        $cli->exit_error(CLI::COLOR_LIGHT_GREEN."No running process found.".CLI::COLOR_EOL, 2);
+        
+    $cli->write(CLI::COLOR_WHITE."Stopping ".CLI::COLOR_LIGHT_YELLOW.PROG_NAME.CLI::COLOR_WHITE." with PID ".CLI::COLOR_LIGHT_RED.$pid.CLI::COLOR_WHITE."...".CLI::COLOR_EOL, "");
+    $cli->trigger_signal_to($pid, SIGTERM);    
+    sleep(10);
+    $cli->write(CLI::COLOR_LIGHT_GREEN."OK".CLI::COLOR_EOL);    
+}
+elseif ($cli->has_argument("reload"))
+{
+    // Get PID, if one and send SIGHUP to reload
+    $pid = CLI::get_pid_from_pidfile(PID_FILE);
+    
+    if (!$pid)
+        $cli->exit_error(CLI::COLOR_LIGHT_GREEN."No running process found.".CLI::COLOR_EOL, 2);
+        
+    $cli->write(CLI::COLOR_WHITE."Reloading ".CLI::COLOR_LIGHT_YELLOW.PROG_NAME.CLI::COLOR_WHITE." with PID ".CLI::COLOR_LIGHT_RED.$pid.CLI::COLOR_WHITE."...".CLI::COLOR_EOL, "");
+    $cli->trigger_signal_to($pid, SIGHUP);    
+    sleep(10);
+    $cli->write(CLI::COLOR_LIGHT_GREEN."OK".CLI::COLOR_EOL);    
+}
+elseif ($cli->has_argument("status"))
+{
+    // Get PID, if one and display it
+    $pid = CLI::get_pid_from_pidfile(PID_FILE);
+    
+    if (!$pid)
+        $cli->exit_error(CLI::COLOR_LIGHT_GREEN."No running process found.".CLI::COLOR_EOL, 2);
+        
+    $cli->write(CLI::COLOR_LIGHT_YELLOW.PROG_NAME.CLI::COLOR_WHITE." is running with PID ".CLI::COLOR_LIGHT_RED.$pid.CLI::COLOR_EOL);
+}
+else
+{
+    usage();
+}
+        
 // Thank you and now, your applause :-)
 exit;

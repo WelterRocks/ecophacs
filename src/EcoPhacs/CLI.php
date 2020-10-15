@@ -613,14 +613,19 @@ class CLI
         return getrusage((($with_children) ? true : false));
     }
     
-    public function trigger_signal($signal, &$errno = null, &$errstr = null)
+    public function trigger_signal_to($pid, $signal, &$errno = null, &$errstr = null)
     {
-        $retval = posix_kill($this->pid, $signal);
+        $retval = posix_kill($pid, $signal);
         
         $errno = posix_errno();
         $errstr = posix_get_last_error();
         
-        return $retval;
+        return $retval;        
+    }
+    
+    public function trigger_signal($signal, &$errno = null, &$errstr = null)
+    {
+        return $this->trigger_signal_to($this->pid, $signal, $errno, $errstr);
     }
     
     public function set_priority($priority)
