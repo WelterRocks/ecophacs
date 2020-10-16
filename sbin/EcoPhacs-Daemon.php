@@ -181,6 +181,50 @@ function fifo_initialize()
     return;
 }
 
+// Separator object
+function result_separator($id, $type = "begin", $result = "ok", $msg = null, $checksum = null)
+{
+    global $fifo_out;
+    
+    switch ($type)
+    {
+        case "begin":
+        case "end":
+            break;
+        default:
+            return null;
+    }
+    
+    switch ($result)
+    {
+        case "ok":
+        case "error":
+            break;
+        default:
+            return null;
+    }
+
+    $sep = new \stdClass;
+    $sep->result_separator = true;
+    $sep->type = $type;
+    $sep->id = $id;
+    $sep->timestamp = round((microtime(true) * 1000));
+    
+    if ($type != "begin")
+    {
+        $sep->result = $result;
+        $sep->msg = $msg;
+        $sep->checksum = $checksum;
+    }
+    
+    if (!is_resource($fifo_out))
+        return null;
+            
+    @fwrite($fifo_out, base64_encode(json_encode($sep))."\n");
+    
+    return null;
+}
+
 // Worker loop
 function worker_loop(Client $ecovacs, $devices)
 {
@@ -223,11 +267,26 @@ function worker_loop(Client $ecovacs, $devices)
     
     if ($ticks_output == 10000)
     {
-        // Output status
+        // Output status each 10000 ticks and mark it as STATUS_timestamp
+        $status_id = "STATUS_".round((microtime(true) * 1000));
+        $status_buffer = "";
+        
+        result_separator($status_id);
+        
         foreach ($devices as $dev)
         {
-            @fwrite($fifo_out, $dev->to_json()."\n");
+            $status_buffer .= base64_encode($dev->to_json())."\n";
         }
+        
+        $status_checksum = md5($status_buffer);
+        
+        @fwrite($fifo_out, $status_buffer);
+        
+        result_separator($status_id, "end", "ok", "Status update", $status_checksum);
+        
+        unset($status_id);
+        unset($status_buffer);
+        unset($status_checksum);
         
         $ticks_output = 0;
     }
@@ -235,13 +294,13 @@ function worker_loop(Client $ecovacs, $devices)
     // Throttle CPU to prevent "doNothingLoop overloads"
     usleep(2500);
 
-    $incoming_message = trim(@fread($fifo_in, 1024));
+    $incoming_message = base64_decode(trim(@fgets($fifo_in, 4096)));
     
     if (!$incoming_message)
         return;
         
-    // Split device, command and args (format: IDOFDEVICE01234:command:arg1,arg2,...)
-    $fields = explode(":", $incoming_message, 3);
+    // Split device, command, result seperator and args (format: IDOFDEVICE01234:command:EOL:arg1,arg2,...)
+    $fields = explode(":", $incoming_message, 4);
     $device_id = $fields[0];
     
     if (!isset($fields[1]))
@@ -249,26 +308,42 @@ function worker_loop(Client $ecovacs, $devices)
     
     $command = $fields[1];
     
-    if (isset($fields[2]))
-        $arguments = explode(",", $fields[2]);
+    if (!isset($fields[2]))
+        return;
+        
+    $res_separator = $fields[2];
+    
+    if (isset($fields[3]))
+        $arguments = explode(",", $fields[3]);
     else
         $arguments = array();
         
+    // Send result separator at the beginning
+    result_separator($res_separator);
+    
+    // Initialize variables for result separator at the end
+    $res_result = "ok";
+    $res_message = "command ".$command." for ".$device_id." successful";
+    $res_checksum = null;
+    
+    // Initialize send buffer
+    $send_buffer = "";
+    
     // Check for valid command
     if (in_array($command, $public_functions))
     {
         $cli->log("Received command '".$command."' for device '".$device_id."'", LOG_INFO);
         
         if (!isset($devices[$device_id]))
-            return;
+            return result_separator($res_separator, "end", "error", "device not found");
             
         $result = call_user_func_array(array($devices[$device_id], $command), $arguments);
         
         if ((!is_array($result)) && (!is_object($result)))
             $result = array("result" => $result);
             
-        @fwrite($fifo_out, json_encode($result)."\n");
-        
+        $send_buffer = json_encode($result)."\n";
+            
         unset($result);
     }
     elseif (($device_id == "local") && ($command == "exit"))
@@ -290,8 +365,8 @@ function worker_loop(Client $ecovacs, $devices)
         
         foreach ($devices as $did => $dev)
         {
-            @fwrite($fifo_out, json_encode(array("DID" => $dev->did, "nickname" => $dev->nick))."\n");
-        }
+            $send_buffer .= json_encode(array("DID" => $dev->did, "nickname" => $dev->nick))."\n";
+        }        
     }    
     elseif (($device_id == "any") && ($command == "status"))
     {
@@ -299,25 +374,40 @@ function worker_loop(Client $ecovacs, $devices)
         
         foreach ($devices as $did => $dev)
         {
-            @fwrite($fifo_out, $dev->to_json()."\n");
+            $send_buffer .= $dev->to_json()."\n";
         }
     }
     elseif (($device_id == "local") && ($command == "ticks"))
     {
         $cli->log("Received local ticks status request", LOG_INFO);
         
-        @fwrite($fifo_out, json_encode(array("result" => "ticks", "state" => $ticks_state, "lifespans" => $ticks_lifespans, "output" => $ticks_output))."\n");
+        $send_buffer = json_encode(array("result" => "ticks", "state" => $ticks_state, "lifespans" => $ticks_lifespans, "output" => $ticks_output))."\n";
     }
     else
     {
         $cli->log("Received unknown command '".$command."' for device id '".$device_id."'", LOG_WARNING);
 
-        @fwrite($fifo_out, json_encode(array("error" => "Unknown command ".$command))."\n");
+        $send_buffer = json_encode(array("error" => "Unknown command ".$command))."\n";
     }
     
+    // Checksum the send buffer, even if it is empty
+    $res_checksum = md5($send_buffer);
+    
+    // If we have a send buffer, send it through the fifo socket
+    if (trim($send_buffer))
+        @fwrite($fifo_out, base64_encode($send_buffer)."\n");
+    
+    // Send result separator at the end and tell the requesting party, that the command is done
+    result_separator($res_separator, "end", $res_result, $res_message, $res_checksum);
+    
     // Clean up
+    unset($send_buffer);
     unset($arguments);
     unset($command);
+    unset($res_separator);
+    unset($res_result);
+    unset($res_message);
+    unset($res_checksum);
     unset($device_id);
     unset($fields);
     unset($incoming_message);
