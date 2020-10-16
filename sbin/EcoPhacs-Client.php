@@ -419,7 +419,7 @@ else
             if ((!is_numeric($usecs)) || ($usecs < 0) || (!$usecs))
                 continue;
                 
-            usleep($secs);
+            usleep($usecs);
 
             if (!$no_stdout)
                 $cli->write(CLI::COLOR_LIGHT_BLUE.date("Y-m-d H:i:s")." ".CLI::COLOR_LIGHT_MAGENTA."NANOWAIT: ".CLI::COLOR_WHITE."Waiting for ".$usecs." nanoseconds.".CLI::COLOR_EOL);           
