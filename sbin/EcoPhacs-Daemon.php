@@ -332,7 +332,7 @@ function worker_loop(Client $ecovacs, $devices)
     // Check for valid command
     if (in_array($command, $public_functions))
     {
-        $cli->log("Received command '".$command."' for device '".$device_id."'", LOG_INFO);
+        $cli->log("Received command '".$command."' for device '".$device_id."'".((count($arguments)) ? " with arguments ".implode(", ", $arguments) : ""), LOG_INFO);
         
         if (!isset($devices[$device_id]))
             return result_separator($res_separator, "end", "error", "device not found");
