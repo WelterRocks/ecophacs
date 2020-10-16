@@ -66,7 +66,7 @@ $cli->redirect_signal(SIGUSR2, SIGTERM);
 $cli->redirect_signal(SIGINT, SIGTERM);
 
 // Usable device commands
-$commands = array("auto", "stop", "border", "spot", "left", "right", "forward", "turn", "halt", "playsound", "charge");
+$commands = array("auto", "stop", "border", "spot", "left", "right", "forward", "turn", "halt", "playsound", "charge", "singleroom");
 
 // Usage
 function usage()
