@@ -24,7 +24,7 @@ use Mosquitto\Client;
 use Mosquitto\Message;
 use WelterRocks\Config;
 
-final class bootstrap
+class MQTT
 {
     private $mqtt = null;
     private $config = null;
