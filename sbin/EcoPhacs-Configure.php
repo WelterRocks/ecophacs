@@ -78,6 +78,13 @@ if (defined("INIT_CONFIG"))
     @fwrite($fd, "country=de\n");
     @fwrite($fd, "account_id=put-your@email.here\n");
     @fwrite($fd, "password_hash=YOUR-CLEARTEXT-PASSWORD-HERE\n");
+    @fwrite($fd, "mqtt_hostname=localhost\n");
+    @fwrite($fd, "mqtt_hostport=1883\n");
+    @fwrite($fd, "mqtt_username=mqtt\n");
+    @fwrite($fd, "mqtt_password=YOUR-MQTT-PASSWORD-HERE\n");
+    @fwrite($fd, "mqtt_client_id=EcoPhacs\n");
+    @fwrite($fd, "mqtt_topic=%prefix%/ecophacs/%device_type%/%device_id%/%suffix%\n");
+
     @fclose($fd);
 }
 
@@ -108,6 +115,26 @@ foreach ($config as $key => $val)
         case "password_hash":
             $cli->write("\n".CLI::COLOR_MAGENTA."WARNING: password characters are shown at console. Press ENTER only to leave to old one!".CLI::COLOR_EOL);
             $text = CLI::COLOR_WHITE."Please enter your ".CLI::COLOR_LIGHT_GREEN."password".CLI::COLOR_WHITE." for your ".CLI::COLOR_YELLOW."ecovacs".CLI::COLOR_WHITE." account".CLI::COLOR_EOL;
+            $default = "";
+            break;
+        case "mqtt_hostname":
+            $text = CLI::COLOR_WHITE."Please enter the ".CLI::COLOR_LIGHT_GREEN."hostname".CLI::COLOR_WHITE." of your mqtt-broker".CLI::COLOR_EOL;
+            break;
+        case "mqtt_hostport":
+            $text = CLI::COLOR_WHITE."Please enter the ".CLI::COLOR_LIGHT_GREEN."port".CLI::COLOR_WHITE." of your mqtt-broker".CLI::COLOR_EOL;
+            break;
+        case "mqtt_username":
+            $text = CLI::COLOR_WHITE."Please enter the ".CLI::COLOR_LIGHT_GREEN."username".CLI::COLOR_WHITE." for your mqtt-broker".CLI::COLOR_EOL;
+            break;
+        case "mqtt_client_id":
+            $text = CLI::COLOR_WHITE."Please enter the ".CLI::COLOR_LIGHT_GREEN."client-id".CLI::COLOR_WHITE." for your mqtt-broker".CLI::COLOR_EOL;
+            break;
+        case "mqtt_topic":
+            $text = CLI::COLOR_WHITE."Please enter the ".CLI::COLOR_LIGHT_GREEN."topic".CLI::COLOR_WHITE." for your mqtt-broker".CLI::COLOR_EOL;
+            break;
+        case "mqtt_password":
+            $cli->write("\n".CLI::COLOR_MAGENTA."WARNING: password characters are shown at console. Press ENTER only to leave to old one!".CLI::COLOR_EOL);
+            $text = CLI::COLOR_WHITE."Please enter your ".CLI::COLOR_LIGHT_GREEN."password".CLI::COLOR_WHITE." for your mqtt-broker".CLI::COLOR_EOL;
             $default = "";
             break;
         default:

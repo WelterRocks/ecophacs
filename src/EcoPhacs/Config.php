@@ -62,6 +62,15 @@ final class Config
     private $user_uid = null;    
     private $user_access_token = null;
     
+    private $mqtt_hostname = "localhost";
+    private $mqtt_hostport = 1883;
+    
+    private $mqtt_username = null;
+    private $mqtt_password = null;
+    
+    private $mqtt_client_id = "EcoPhacs";
+    private $mqtt_topic = "%prefix%/ecophacs/%device_type%/%device_id%/%suffix%";
+    
     private $dynamic_keys = null;
     
     public function write($config_file = ".ecophacs")
@@ -91,7 +100,7 @@ final class Config
     
     function __construct($config_file = ".ecophacs")
     {
-        $this->dynamic_keys = array("device_id", "continent", "country", "account_id", "password_hash", "login_access_token", "login_uid", "login_username", "auth_code", "auth_uid", "user_uid", "user_access_token");
+        $this->dynamic_keys = array("device_id", "continent", "country", "account_id", "password_hash", "login_access_token", "login_uid", "login_username", "auth_code", "auth_uid", "user_uid", "user_access_token", "mqtt_hostname", "mqtt_hostport", "mqtt_username", "mqtt_password", "mqtt_client_id", "mqtt_topic");
         
         if (file_exists($config_file))
         {
@@ -135,6 +144,7 @@ final class Config
             case "api_url_main":
             case "api_url_user":
             case "xmpp_hostname":
+            case "mqtt_topic":
                 $rpl = array("country", "app_language", "device_id", "app_code", "app_version", "app_channel", "device_type", "continent");
                 $val = $this->$key;
                 
