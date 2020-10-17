@@ -5,12 +5,12 @@ use PHPUnit\Framework\TestCase;
 
 class XmlTest extends TestCase
 {
-    use CLI;
-
     public function testProcessTitle()
     {
-        $expected = $this->set_process_title("EcoPhacsTest");
-        $this->assertEquals($expected, $this->get_process_title());
+        $cli = new CLI("EcoPhacsTest");
+        
+        $expected = $cli->set_process_title("EcoPhacsTest");
+        $this->assertEquals($expected, $cli->get_process_title());
     }
 }
 
