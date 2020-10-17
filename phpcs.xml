@@ -13,7 +13,7 @@
     <exclude-pattern>*/.idea/*</exclude-pattern>
     <exclude-pattern>*/Example*</exclude-pattern>
 
-    <arg name="report" value="summary"/>
+    <arg name="report" value="full"/>
     <arg name="colors"/>
     <arg value="sp"/>
 
