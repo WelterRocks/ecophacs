@@ -15,3 +15,6 @@ script:
   - vendor/bin/phpcs . ./phpcs.xml
   ## PHP Mess Detector
   - vendor/bin/phpmd ./src,./tests text ./phpmd.xml
+  ## PHPUnit Tests
+  - vendor/bin/phpunit --coverage-xml ./phpunit.xml
+  
