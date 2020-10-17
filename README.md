@@ -1,11 +1,11 @@
 # EcoPhacs is a PHP client library for the Ecovacs API
 
-[![Latest Stable Version](https://poser.pugx.org/welterrocks/ecophacs/v/stable)](https://packagist.org/packages/welterrocks/ecophacs)
+[![License](https://poser.pugx.org/welterrocks/ecophacs/license)](https://packagist.org/packages/welterrocks/ecophacs)
 [![Total Downloads](https://poser.pugx.org/welterrocks/ecophacs/downloads)](https://packagist.org/packages/welterrocks/ecophacs)
+[![Latest Stable Version](https://poser.pugx.org/welterrocks/ecophacs/v/stable)](https://packagist.org/packages/welterrocks/ecophacs)
 [![Latest Unstable Version](https://poser.pugx.org/welterrocks/ecophacs/v/unstable)](https://packagist.org/packages/welterrocks/ecophacs)
 [![Linux Build](https://travis-ci.org/welterrocks/ecophacs.svg?branch=main)](https://travis-ci.org/welterrocks/ecophacs)
 [![Windows Build](https://ci.appveyor.com/api/projects/status/github/welterrocks/ecophacs)](https://ci.appveyor.com/welterrocks/ecophacs)
-[![License](https://poser.pugx.org/welterrocks/ecophacs/license)](https://packagist.org/packages/welterrocks/ecophacs)
 
 This library uses PHP to connect to the Ecovacs API and let you control your
 Ecovacs based devices, like Deebot for example. You need an Ecovacs cloud
