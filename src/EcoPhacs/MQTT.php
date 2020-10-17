@@ -22,7 +22,8 @@
 
 use Mosquitto\Client;
 use Mosquitto\Message;
-use WelterRocks\Config;
+use WelterRocks\EcoPhacs\Config;
+use WelterRocks\EcoPhacs\Device;
 
 class MQTT
 {
@@ -58,20 +59,32 @@ class MQTT
             
         if (($username) || ($password) || ($hostname) || ($port) || ($client_id) || ($topic))
             $this->config->write($config);
-        
+            
         $this->connected = false;
         
         $this->mqtt = new Client($this->config->mqtt_client_id.getmypid());
 
         $this->mqtt->setCredentials($this->config->mqtt_username, $this->config->mqtt_password);        
         $this->mqtt->setReconnectDelay(10, 60, true);
-                
-        $this->mqtt->onConnect(array($this, 'subscribe'));        
+
+// Hmm, seems that onConnect is not triggered. For now, we subscribe in connect function                
+//        $this->mqtt->onConnect(array($this, 'subscribe'));        
         $this->mqtt->onMessage(array($this, 'message_receive'));
         $this->mqtt->onDisconnect(array($this, 'unsubscribe'));
 
         $this->flush_cache();
         $this->connect();
+    }
+    
+    public function get_topic($prefix, $device, $suffix)
+    {
+        $topic = $this->config->mqtt_topic;
+
+        $topic = str_replace("%prefix%", $prefix, $topic);
+        $topic = str_replace("%device%", $device, $topic);
+        $topic = str_replace("%suffix%", $suffix, $topic);
+        
+        return $topic;
     }
     
     public function message_send($topic, $msg, $qos = 0, $retain = false)
@@ -90,49 +103,34 @@ class MQTT
         switch (strtolower($this->message->topic[0]))
         {
             case "tele":
-                $this->message->topic_type = "telemetry";
+                $this->message->topic_prefix = "telemetry";
                 break;
             case "stat":
-                $this->message->topic_type = "statistic";
+                $this->message->topic_prefix = "statistic";
                 break;
             case "cmnd":
-                $this->message->topic_type = "command";
+                $this->message->topic_prefix = "command";
                 break;
             default:
-                $this->message->topic_type = "unknown";
+                $this->message->topic_prefix = "unknown";
                 break;
         }
         
         $last = (count($this->message->topic) - 1);
         
         $this->message->cache_id = null;
-        $this->message->topic_service = $this->message->topic[$last];
+        $this->message->topic_suffix = $this->message->topic[$last];        
+        $this->message->topic_device = $this->message->topic[$last-1];
         
-        if (count($this->message->topic) == 5)
-        {
-            $this->message->topic_zone = "lv";
-            $this->message->topic_level = $this->message->topic[1];
-            $this->message->topic_room = $this->message->topic[2];
-            $this->message->topic_device = $this->message->topic[3];
+        $topic_raw = array();
+        
+        for ($i = 1; $i < ($last-1); $i++)
+            array_push($topic_raw, $this->message->topic[$i]);
             
-            unset($this->message->topic);
-        }
-        elseif (count($this->message->topic) == 6)
-        {
-            $this->message->topic_zone = $this->message->topic[1];
-            $this->message->topic_level = $this->message->topic[2];
-            $this->message->topic_room = $this->message->topic[3];
-            $this->message->topic_device = $this->message->topic[4];
-            
-            unset($this->message->topic);
-        }
-        else
-        {
-            $this->message->cache_id = md5($this->message->topic);
-        }
+        $this->message->topic_raw = implode("/", $topic_raw);
         
         if (!$this->message->cache_id)
-            $this->message->cache_id = md5($this->message->topic_zone.$this->message->topic_level.$this->message->topic_room.$this->message->topic_device);
+            $this->message->cache_id = md5($this->message->topic_raw.$this->message->topic_device);
         
         $this->message->payload = json_decode($msg->payload);
         $this->message->payload_type = ((is_object($this->message->payload)) ? "json" : "string");
@@ -151,12 +149,8 @@ class MQTT
         if (!isset($this->cache[$this->message->cache_id]))
             $this->cache[$this->message->cache_id] = new \stdClass;
             
-        if (isset($this->message->topic_zone))
-            $this->cache[$this->message->cache_id]->topic_zone = $this->message->topic_zone;
-        if (isset($this->message->topic_level))
-            $this->cache[$this->message->cache_id]->topic_level = $this->message->topic_level;
-        if (isset($this->message->topic_room))
-            $this->cache[$this->message->cache_id]->topic_room = $this->message->topic_room;
+        if (isset($this->message->topic_raw))
+            $this->cache[$this->message->cache_id]->topic_raw = $this->message->topic_raw;
         if (isset($this->message->topic_device))
             $this->cache[$this->message->cache_id]->topic_device = $this->message->topic_device;
         if (isset($this->message->topic))
@@ -168,16 +162,16 @@ class MQTT
         if (!isset($this->cache[$this->message->cache_id]->payload))
             $this->cache[$this->message->cache_id]->payload = new \stdClass;
             
-        $service = $this->message->topic_service;
-        $type = $this->message->topic_type;
+        $suffix = $this->message->topic_suffix;
+        $prefix = $this->message->topic_prefix;
         
-        if (!isset($this->cache[$this->message->cache_id]->payload->$type))
-            $this->cache[$this->message->cache_id]->payload->$type = new \stdClass;
+        if (!isset($this->cache[$this->message->cache_id]->payload->$prefix))
+            $this->cache[$this->message->cache_id]->payload->$prefix = new \stdClass;
 
-        if (!isset($this->cache[$this->message->cache_id]->payload->$type->$service))
-            $this->cache[$this->message->cache_id]->payload->$type->$service = new \stdClass;
+        if (!isset($this->cache[$this->message->cache_id]->payload->$prefix->$suffix))
+            $this->cache[$this->message->cache_id]->payload->$prefix->$suffix = new \stdClass;
 
-        $this->cache[$this->message->cache_id]->payload->$type->$service = $this->message->payload;                
+        $this->cache[$this->message->cache_id]->payload->$prefix->$suffix = $this->message->payload;                
         $this->cache[$this->message->cache_id]->timestamp = time();
 
         $this->cachesize = count($this->cache);
@@ -201,13 +195,15 @@ class MQTT
     
     public function subscribe()
     {
-        $mid = $this->mqtt->subscribe("#", 2);
+        $topic = $this->get_topic("cmnd", "+", "+");
+        
+        $mid = $this->mqtt->subscribe($topic, 2);
         
         if ($mid)
             $this->connected = true;
     }
     
-    public function unsubscribe()
+    public function unsubscribe($topic)
     {
         $this->connected = false;
     }
@@ -224,14 +220,42 @@ class MQTT
         return null;
     }
     
-    private function connect()
+    private function connect(&$ex = null)
     {
-        return $this->mqtt->connect($this->config->mqtt_hostname, $this->config->mqtt_hostport);
+        try
+        {
+            // Subscribe after connect, because onConnect doesnt work currently
+            $this->mqtt->connect($this->config->mqtt_hostname, $this->config->mqtt_hostport);
+            $this->subscribe();
+                
+            return true;
+        }
+        catch (Mosquitto\Exception $ex)
+        {
+            return null;
+        }
+        catch (exception $ex)
+        {
+            return null;
+        }
     }
     
-    private function disconnect()
+    private function disconnect(&$ex = null)
     {
-        return $this->mqtt->disconnect();
+        $this->connected = false;
+        
+        try
+        {
+            return $this->mqtt->disconnect();
+        }
+        catch(Mosquitto\Exception $ex)
+        {
+            return null;
+        }
+        catch (exception $ex)
+        {
+            return null;
+        }
     }
     
     function __destruct()

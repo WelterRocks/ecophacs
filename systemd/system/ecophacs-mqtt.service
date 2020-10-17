@@ -1,0 +1,18 @@
+[Unit]
+Description=EcoPhacs-MQTT
+After=syslog.target network.target remote-fs.target nss-lookup.target
+Documentation=https://github.com/WelterRocks/ecophacs
+Conflicts=ecophacs-daemon.service
+
+[Service]
+Type=forking
+PIDFile=/run/ecophacs/EcoPhacsMQTT.pid
+Environment=ECOPHACS_MQTT_STARTED_BY_SYSTEMD=true
+ExecStart=/usr/local/sbin/EcoPhacs-MQTT.php start
+ExecStop=/usr/local/sbin/EcoPhacs-MQTT.php stop
+ExecReload=/usr/local/sbin/EcoPhacs-MQTT.php reload
+PrivateTmp=true
+Restart=on-abort
+
+[Install]
+WantedBy=multi-user.target

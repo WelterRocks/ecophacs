@@ -2,6 +2,7 @@
 Description=EcoPhacs-Daemon
 After=syslog.target network.target remote-fs.target nss-lookup.target
 Documentation=https://github.com/WelterRocks/ecophacs
+Conflicts=ecophacs-mqtt.service
 
 [Service]
 Type=forking

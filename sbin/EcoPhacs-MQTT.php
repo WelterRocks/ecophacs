@@ -26,23 +26,17 @@ use WelterRocks\EcoPhacs\Client;
 use WelterRocks\EcoPhacs\Device;
 use WelterRocks\EcoPhacs\Callback;
 use WelterRocks\EcoPhacs\CLI;
+use WelterRocks\EcoPhacs\MQTT;
 
 // FIFO, config and PID file settings
-define("PROG_NAME", "EcoPhacsDaemon");
+define("PROG_NAME", "EcoPhacsMQTT");
 define("RUN_DIR", "/run/ecophacs");
 define("PID_FILE", RUN_DIR."/".PROG_NAME.".pid");
-
-define("SOCKET_IN", RUN_DIR."/ecophacs-in.fifo");
-define("SOCKET_OUT", RUN_DIR."/ecophacs-out.fifo");
-define("SOCKET_PERM", "0666");
 
 define("HOME_DIR", getenv("HOME"));
 define("CONF_DIR", "/etc/ecophacs");
 
 // Handles, bools and tick counters
-$fifo_in = null;
-$fifo_out = null;
-
 $daemon_terminate = false;
 $worker_reload = false;
 
@@ -122,112 +116,11 @@ function select_config_file()
     return $config_file;
 }
 
-// Setting FIFO handles and functions
-function fifo_shutdown()
-{
-    global $fifo_in, $fifo_out, $cli;
-    
-    if (is_resource($fifo_in))
-        @fclose($fifo_in);
-        
-    if (is_resource($fifo_out))
-        @fclose($fifo_out);
-
-    $cli->log("Shutdown point reached. Bye.", LOG_INFO);
-}
-
-function touch_fifo($file)
-{
-    global $cli;
-    
-    if (!file_exists($file))
-    {
-        if (!function_exists("posix_mkfifo"))
-            @shell_exec("mkfifo -m ".SOCKET_PERM." '".$file."' >/dev/null 2>&1");
-        else
-            @posix_mkfifo($file, SOCKET_PERM);
-    }
-    
-    if (!file_exists($file))
-        $cli->exit_error("Unable to create fifo sockets", 2);
-}
-
-// Initialize FIFO function
-function fifo_initialize()
-{
-    global $cli, $fifo_in, $fifo_out;
-    
-    if (!is_dir(RUN_DIR))
-        $cli->log("Missing socket directory '".RUN_DIR."'", LOG_EMERG);
-
-    touch_fifo(SOCKET_IN);
-    touch_fifo(SOCKET_OUT);
-
-    $fifo_in = @fopen(SOCKET_IN, "r+");
-
-    if (!is_resource($fifo_in))
-        $cli->log("Unable to open incoming FIFO '".SOCKET_IN."', permission denied", LOG_EMERG);
-
-    $fifo_out = @fopen(SOCKET_OUT, "w+");
-
-    if (!is_resource($fifo_out))
-        $cli->log("Unable to open outgoing FIFO '".SOCKET_OUT."', permission denied", LOG_EMERG);
-
-    stream_set_blocking($fifo_in, false);
-    stream_set_blocking($fifo_out, false);
-    
-    return;
-}
-
-// Separator object
-function result_separator($id, $type = "begin", $result = "ok", $msg = null, $checksum = null)
-{
-    global $fifo_out;
-    
-    switch ($type)
-    {
-        case "begin":
-        case "end":
-            break;
-        default:
-            return null;
-    }
-    
-    switch ($result)
-    {
-        case "ok":
-        case "error":
-            break;
-        default:
-            return null;
-    }
-
-    $sep = new \stdClass;
-    $sep->result_separator = true;
-    $sep->type = $type;
-    $sep->id = $id;
-    $sep->timestamp = round((microtime(true) * 1000));
-    
-    if ($type != "begin")
-    {
-        $sep->result = $result;
-        $sep->msg = $msg;
-        $sep->checksum = $checksum;
-    }
-    
-    if (!is_resource($fifo_out))
-        return null;
-            
-    @fwrite($fifo_out, base64_encode(json_encode($sep))."\n");
-    
-    return null;
-}
-
 // Worker loop
-function worker_loop(Client $ecovacs, $devices)
+function worker_loop(MQTT $mqtt, Client $ecovacs, $devices)
 {
     global $ticks_state, $ticks_lifespans, $ticks_output;
-    global $cli, $fifo_in, $fifo_out, $public_functions;
+    global $cli, $public_functions;
     global $worker_reload, $daemon_terminate;
     
     // Dispatch signals in inner loop
@@ -237,7 +130,7 @@ function worker_loop(Client $ecovacs, $devices)
     $ticks_lifespans++;
     $ticks_output++;
     
-    if ($ticks_state == 20000)
+    if ($ticks_state == 2500)
     {
         // Request statuses
         foreach ($devices as $dev)
@@ -252,7 +145,7 @@ function worker_loop(Client $ecovacs, $devices)
         $ticks_state = 0;
     }
     
-    if ($ticks_lifespans == 100000)
+    if ($ticks_lifespans == 10000)
     {
         // Request lifespans
         foreach ($devices as $dev)
@@ -265,85 +158,71 @@ function worker_loop(Client $ecovacs, $devices)
         $ticks_lifespans = 0;
     }
     
-    if ($ticks_output == 10000)
+    if ($ticks_output == 1000)
     {
-        // Output status each 10000 ticks and mark it as STATUS_timestamp
-        $status_id = "STATUS_".round((microtime(true) * 1000));
-        $status_buffer = "";
-        
-        result_separator($status_id);
+        // Output status each 10000 ticks
         
         foreach ($devices as $dev)
         {
-            $status_buffer .= base64_encode($dev->to_json())."\n";
+            $topic = $mqtt->get_topic("tele", $dev->did, "STATE");
+            $payload = $dev->to_json();
+            
+            $mqtt->message_send($topic, $payload, 1, false);
         }
-        
-        $status_checksum = md5($status_buffer);
-        
-        @fwrite($fifo_out, $status_buffer);
-        
-        result_separator($status_id, "end", "ok", "Status update", $status_checksum);
-        
-        unset($status_id);
-        unset($status_buffer);
-        unset($status_checksum);
-        
+                        
         $ticks_output = 0;
-    }
+    }    
     
     // Throttle CPU to prevent "doNothingLoop overloads"
     usleep(2500);
+    
+    // Check, whether we have lost the conenction to the broker
+    if (!$mqtt->connected)
+    {
+        $worker_reload = true;
+        
+        $cli->log("Lost connection to MQTT broker.", LOG_ALERT);
+        
+        sleep(5);
+        
+        return;
+    }
 
-    $incoming_message = base64_decode(trim(@fgets($fifo_in, 4096)));
+    $message = $mqtt->loop(10);
     
-    if (!$incoming_message)
+    if ((!$message) && (!is_object($message)))
         return;
         
-    // Split device, command, result seperator and args (format: IDOFDEVICE01234:command:EOL:arg1,arg2,...)
-    $fields = explode(":", $incoming_message, 4);
-    $device_id = $fields[0];
-    
-    if (!isset($fields[1]))
-        return;
-    
-    $command = $fields[1];
-    
-    if (!isset($fields[2]))
+    if ($message->topic_prefix != "command")
         return;
         
-    $res_separator = $fields[2];
+    $command = $message->topic_suffix;
+    $device_id = $message->topic_device;
+    $arguments = explode(",", $message->payload);
     
-    if (isset($fields[3]))
-        $arguments = explode(",", $fields[3]);
-    else
+    if (!$arguments)
         $arguments = array();
-        
-    // Send result separator at the beginning
-    result_separator($res_separator);
     
-    // Initialize variables for result separator at the end
-    $res_result = "ok";
-    $res_message = "command ".$command." for ".$device_id." successful";
-    $res_checksum = null;
-    
-    // Initialize send buffer
-    $send_buffer = "";
+    // Initialize send variables
+    $send_topic = $mqtt->get_topic("stat", $device_id, $command);
+    $send_payload = null;
+    $send_qos = 0;
+    $send_retain = false;
     
     // Check for valid command
     if (in_array($command, $public_functions))
     {
         $cli->log("Received command '".$command."' for device '".$device_id."'".((count($arguments)) ? " with arguments ".implode(", ", $arguments) : ""), LOG_INFO);
         
-        if (!isset($devices[$device_id]))
-            return result_separator($res_separator, "end", "error", "device not found");
-            
         $result = call_user_func_array(array($devices[$device_id], $command), $arguments);
         
         if ((!is_array($result)) && (!is_object($result)))
-            $result = array("result" => $result);
-            
-        $send_buffer = json_encode($result)."\n";
-            
+            $result = array("command" => $command, "arguments" => $arguments, "device_id" => $device_id, "timestamp" => round((microtime(true) * 1000)), "result" => $result);
+        
+        $send_payload = json_encode($result);
+        $send_qos = 1;
+        $send_retain = true;
+                    
         unset($result);
     }
     elseif (($device_id == "local") && ($command == "exit"))
@@ -352,66 +231,79 @@ function worker_loop(Client $ecovacs, $devices)
         
         $worker_reload = true;
         $daemon_terminate = true;
+        
+        $result = array("command" => $command, "arguments" => $arguments, "device_id" => $device_id, "timestamp" => round((microtime(true) * 1000)), "result" => true);
+
+        $send_payload = json_encode($result);
+        
+        unset($result);
     }
     elseif (($device_id == "local") && ($command == "reload"))
     {
         $cli->log("Received local reload command", LOG_INFO);
         
         $worker_reload = true;
+
+        $result = array("command" => $command, "arguments" => $arguments, "device_id" => $device_id, "timestamp" => round((microtime(true) * 1000)), "result" => true);
+
+        $send_payload = json_encode($result);
+        
+        unset($result);
     }
     elseif (($device_id == "any") && ($command == "devicelist"))
     {
         $cli->log("Received devicelist request", LOG_INFO);
         
+        $devicelist = array();
+                
         foreach ($devices as $did => $dev)
         {
-            $send_buffer .= json_encode(array("DID" => $dev->did, "nickname" => $dev->nick))."\n";
-        }        
+            array_push($devicelist, array("DID" => $dev->did, "nickname" => $dev->nick, "timestamp" => round((microtime(true) * 1000))));
+        }
+        
+        $send_payload = json_encode($devicelist);
+        
+        unset($devicelist);
     }    
     elseif (($device_id == "any") && ($command == "status"))
     {
         $cli->log("Received status request for devices in json format", LOG_INFO);
         
+        $devicestatus = array();                
+        
         foreach ($devices as $did => $dev)
         {
-            $send_buffer .= $dev->to_json()."\n";
+            array_push($devicestatus, $dev->to_json());
         }
+        
+        $send_payload = json_encode($devicestatus);
+        
+        unset($devicestatus);
     }
     elseif (($device_id == "local") && ($command == "ticks"))
     {
         $cli->log("Received local ticks status request", LOG_INFO);
         
-        $send_buffer = json_encode(array("result" => "ticks", "state" => $ticks_state, "lifespans" => $ticks_lifespans, "output" => $ticks_output))."\n";
+        $send_payload = json_encode(array("result" => "ticks", "state" => $ticks_state, "lifespans" => $ticks_lifespans, "output" => $ticks_output, "timestamp" => round((microtime(true) * 1000))))."\n";
     }
     else
     {
         $cli->log("Received unknown command '".$command."' for device id '".$device_id."'", LOG_WARNING);
 
-        $send_buffer = json_encode(array("error" => "Unknown command ".$command))."\n";
+        $result = array("command" => $command, "arguments" => $arguments, "device_id" => $device_id, "timestamp" => round((microtime(true) * 1000)), "result" => false, "error" => "Unknown command");
+        $send_payload = json_encode($result)."\n";
     }
     
-    // Checksum the send buffer, even if it is empty
-    $res_checksum = md5($send_buffer);
-    
-    // If we have a send buffer, send it through the fifo socket
-    if (trim($send_buffer))
-        @fwrite($fifo_out, base64_encode($send_buffer)."\n");
-    
-    // Send result separator at the end and tell the requesting party, that the command is done
-    result_separator($res_separator, "end", $res_result, $res_message, $res_checksum);
+    // Send message, if any
+    if ($send_payload)
+        $mqtt->message_send($send_topic, $send_payload, $send_qos, $send_retain);
     
     // Clean up
-    unset($send_buffer);
-    unset($arguments);
-    unset($command);
-    unset($res_separator);
-    unset($res_result);
-    unset($res_message);
-    unset($res_checksum);
-    unset($device_id);
-    unset($fields);
-    unset($incoming_message);
-
+    unset($send_topic);
+    unset($send_payload);
+    unset($send_qos);
+    unset($send_retain);
+    
     return;
 }
 
@@ -430,7 +322,7 @@ function mother()
 // Daemon callback does the hard part
 function daemon()
 {
-    global $cli, $fifo_in, $fifo_out, $public_functions;
+    global $cli, $public_functions;
     global $daemon_terminate, $worker_reload;
     
     // Register shutdown function
@@ -459,17 +351,30 @@ function daemon()
     // Initialize logger
     $cli->init_log(LOG_DAEMON);
     
-    // Initialize FIFOs
-    fifo_initialize();
-    
     // Say hello to the log
     $cli->log(PROG_NAME." is starting up", LOG_INFO);
     
     // Daemon loop
     while (!$daemon_terminate)
     {
-        // Create the client (main) object
-        $ecovacs = new Client(select_config_file());
+        // Select config file
+        $config_file = select_config_file();
+        
+        // Create the MQTT object
+        $mqtt = new MQTT($config_file);
+        
+        // Check, whether the MQTT connection has been established
+        if (!$mqtt->connected)
+        {
+            $cli->log("Unable to connect to MQTT host, with topic ".$mqtt->get_topic("+", "+", "+"), LOG_ALERT);
+            
+            sleep(10);
+            
+            continue;
+        }
+        
+        // Create the client object
+        $ecovacs = new Client($config_file);
 
         // Initialize error string store
         $error = null;
@@ -556,7 +461,7 @@ function daemon()
         $cli->log("Reached inner worker loop. Ready to serve :-)", LOG_INFO);
 
         // The worker loop
-        while (!$worker_reload) worker_loop($ecovacs, $devices);
+        while (!$worker_reload) worker_loop($mqtt, $ecovacs, $devices);
         
         // Send info to log, if inner worker loop breaks
         $cli->log("Left inner worker loop. Reloading.", LOG_INFO);
@@ -573,7 +478,6 @@ function daemon()
     
     sleep(5);
         
-    fifo_shutdown();
     remove_pid();
         
     return;
@@ -583,14 +487,13 @@ function daemon()
 function remove_pid()
 {
     global $cli;
-
+    
     $cli->remove_pidfile(PID_FILE, true);
 }
 
 // Shutdown function
 function shutdown_daemon()
 {
-    fifo_shutdown();
     remove_pid();
 }
 
@@ -614,9 +517,9 @@ elseif ($cli->has_argument("foreground"))
         $cli->exit_error(CLI::COLOR_LIGHT_RED."Another instance of ".CLI::COLOR_LIGHT_YELLOW.PROG_NAME.CLI::COLOR_LIGHT_RED." is running at PID ".CLI::COLOR_LIGHT_GREEN.$pid.CLI::COLOR_EOL, 2);
     elseif (!$cli->set_pidfile(PID_FILE, $cli->get_pid()))
         $cli->exit_error(CLI::COLOR_LIGHT_RED."Unable to write PID file '".CLI::COLOR_LIGHT_YELLOW.PID_FILE.CLI::COLOR_LIGHT_RED."'".CLI::COLOR_EOL, 3);
-
-    // Start the daemon in foreground
-    daemon();    
+    
+    // Start the daemon in foreground    
+    daemon();
 }
 elseif ($cli->has_argument("stop"))
 {
