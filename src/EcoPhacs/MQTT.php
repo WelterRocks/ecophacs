@@ -22,6 +22,7 @@
 
 use Mosquitto\Client;
 use Mosquitto\Message;
+use WelterRocks\Config;
 
 final class bootstrap
 {
@@ -34,15 +35,35 @@ final class bootstrap
     private $cache = null;
     private $cachesize = null;
     
-    function __construct($config)
+    private $config_file = null;
+    
+    function __construct($config = ".ecophacs", $hostname = null, $port = null, $username = null, $password = null, $client_id = null, $topic = null)
     {
-        $this->config = $config;
+        $this->config_file = $config;
+        
+        $this->config = new Config($this->config_file);
+        
+        if ($hostname)
+            $this->mqtt_hostname = $hostname;
+        if ($port)
+            $this->mqtt_hostport = $port;
+        if ($username)
+            $this->mqtt_username = $username;
+        if ($password)
+            $this->mqtt_password = $password;
+        if ($client_id)
+            $this->mqtt_client_id = $client_id;
+        if ($topic)
+            $this->mqtt_topic = $topic;
+            
+        if (($username) || ($password) || ($hostname) || ($port) || ($client_id) || ($topic))
+            $this->config->write($config);
         
         $this->connected = false;
         
-        $this->mqtt = new Client($config->mqtt_identify.getmypid());
+        $this->mqtt = new Client($this->config->mqtt_client_id.getmypid());
 
-        $this->mqtt->setCredentials($config->mqtt_username, $config->mqtt_password);        
+        $this->mqtt->setCredentials($this->config->mqtt_username, $this->config->mqtt_password);        
         $this->mqtt->setReconnectDelay(10, 60, true);
                 
         $this->mqtt->onConnect(array($this, 'subscribe'));        
@@ -205,7 +226,7 @@ final class bootstrap
     
     private function connect()
     {
-        return $this->mqtt->connect($this->config->mqtt_hostname, $this->config->mqtt_port);
+        return $this->mqtt->connect($this->config->mqtt_hostname, $this->config->mqtt_hostport);
     }
     
     private function disconnect()
