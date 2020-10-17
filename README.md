@@ -15,7 +15,14 @@ linked to your account. EcoPhacs has been written in PHP and is an alternative
 to the [Sucks](https://github.com/wpietri/sucks) project.
 
 # News
-- **2020-10-16** EcoPhacs-Daemon and EcoPhacs-Client released
+- **2020-10-17** EcoPhacs-MQTT release.
+The first beta version of the EcoPhacs-MQTT daemon has been released. Now, it is possible to connect
+your Ecovacs Deebot directly to a MQTT broker, which is e.g. useful to control and supervise your Ecovacs
+robot devices with your favorite IOT controllers, like OpenHAB. The EcoPhacs-MQTT daemon automatically 
+requests device status updates and post them through the given MQTT topic. Currently the script doenst
+survive a broker restart, because of some unexpected behaviour of the third party mosquitto lib. But this
+will be fixed in the next few days.
+- **2020-10-16** EcoPhacs-Daemon and EcoPhacs-Client released.
 If you would like to have fast access to your bots and immidiate command reactions and responses,
 then this new daemon/client combination is probably what you are searching for. You need two FIFOs 
 in /run, named `ecophacs-in.fifo` and `ecophacs-out.fifo`, which can be accessed by the 
