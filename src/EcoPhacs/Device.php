@@ -295,6 +295,41 @@ class Device
         return $charge_state;
     }
     
+    public function speed($speed = self::VACUUM_POWER_STANDARD, $act = null)
+    {
+        $com = null;
+        
+        switch ($mode)
+        {
+            case self::VACUUM_POWER_STANDARD:
+            case self::VACUUM_POWER_STRONG:
+                $com = "<speed type='{$speed}' speed='{$speed}'".(($act) ? " act='{$act}'" : "")."/>";
+                break;
+            default:
+                return false;
+        }
+
+        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "Speed", $com);
+                
+        $indexes = null;
+        $raw_response = null;
+        
+        $result = $this->get_parsed_response($raw_response, $indexes);
+
+        if (!$result)
+            return null;
+            
+        $speed_state = $this->iq_complete_result($result);
+        
+        if ($speed_state)
+        {
+            $this->status_vacuum_power = $speed;
+            $this->register_states($result, $indexes);
+        }
+
+        return $speed_state;
+    }
+    
     public function clean($mode = self::CLEANING_MODE_AUTO, $speed = self::VACUUM_POWER_STANDARD, $act = null)
     {
         $com = null;
@@ -328,6 +363,16 @@ class Device
             $this->register_states($result, $indexes);
 
         return $clean_state;
+    }
+    
+    public function strong()
+    {
+        return $this->speed(self::VACUUM_POWER_STRONG);
+    }
+    
+    public function standard()
+    {
+        return $this->speed(self::VACUUM_POWER_STANDARD);
     }
     
     public function forward()

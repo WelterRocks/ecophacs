@@ -61,7 +61,7 @@ try
 }
 catch (exception $ex)
 {
-    echo "FATAL ERROR: ".$ex->message."\n";
+    echo "FATAL ERROR: ".$ex->getMessage()."\n";
     exit(255);
 }
 

@@ -55,7 +55,7 @@ try
 }
 catch (exception $ex)
 {
-    echo "FATAL ERROR: ".$ex->message."\n";
+    echo "FATAL ERROR: ".$ex->getMessage()."\n";
     exit(255);
 }
 
@@ -167,7 +167,22 @@ function worker_loop(MQTT $mqtt, Client $ecovacs, $devices)
             $topic = $mqtt->get_topic("tele", $dev->did, "STATE");
             $payload = $dev->to_json();
             
-            $mqtt->message_send($topic, $payload, 1, false);
+            try
+            {
+                $mqtt->message_send($topic, $payload, 1, false);
+            }
+            catch (Mosquitto\Exception $ex)
+            {
+                $cli->log("Mosquitto exception: ".$ex->getMessage(), LOG_ALERT);
+                $worker_reload = true;
+                return;
+            }
+            catch (exception $ex)
+            {
+                $cli->log("General MQTT exception: ".$ex->getMessage(), LOG_ALERT);
+                $worker_reload = true;
+                return;
+            }
         }
                         
         $ticks_output = 0;
@@ -188,7 +203,22 @@ function worker_loop(MQTT $mqtt, Client $ecovacs, $devices)
         return;
     }
 
-    $message = $mqtt->loop(10);
+    try
+    {
+        $message = $mqtt->loop(10);
+    }
+    catch (Mosquitto\Exception $ex)
+    {
+        $cli->log("Mosquitto exception: ".$ex->getMessage(), LOG_ALERT);
+        $worker_reload = true;
+        return;
+    }
+    catch (exception $ex)
+    {
+        $cli->log("General MQTT exception: ".$ex->getMessage(), LOG_ALERT);
+        $worker_reload = true;
+        return;
+    }
     
     if ((!$message) && (!is_object($message)))
         return;
@@ -199,6 +229,31 @@ function worker_loop(MQTT $mqtt, Client $ecovacs, $devices)
     $command = $message->topic_suffix;
     $device_id = $message->topic_device;
     $arguments = explode(",", $message->payload);
+    
+    // if command is STATE, take command from arguments
+    if (($command == "STATE") && (count($arguments) > 0))
+    {
+        $command = $arguments[0];
+        
+        unset($arguments[0]);
+        
+        // Replace arguments in special cases
+        switch ($command)
+        {
+            case "auto":
+            case "singleroom":
+                if (isset($devices[$device_id]))
+                    $arguments = array((($devices[$device_id]->status_vacuum_power == Device::VACUUM_POWER_STRONG) ? 1 : 0));
+                break;
+        }
+    }
+    
+    // if command is POWER, take command from arguments
+    if (($command == "POWER") && (count($arguments) > 0))
+    {
+        $command = $arguments[0];        
+        $arguments = null;        
+    }
     
     if (!$arguments)
         $arguments = array();
@@ -296,7 +351,24 @@ function worker_loop(MQTT $mqtt, Client $ecovacs, $devices)
     
     // Send message, if any
     if ($send_payload)
-        $mqtt->message_send($send_topic, $send_payload, $send_qos, $send_retain);
+    {
+        try
+        {
+            $mqtt->message_send($send_topic, $send_payload, $send_qos, $send_retain);
+        }
+        catch (Mosquitto\Exception $ex)
+        {
+            $cli->log("Mosquitto exception: ".$ex->getMessage(), LOG_ALERT);
+            $worker_reload = true;
+            return;
+        }
+        catch (exception $ex)
+        {
+            $cli->log("General MQTT exception: ".$ex->getMessage(), LOG_ALERT);
+            $worker_reload = true;
+            return;
+        }
+    }
     
     // Clean up
     unset($send_topic);
@@ -361,7 +433,26 @@ function daemon()
         $config_file = select_config_file();
         
         // Create the MQTT object
-        $mqtt = new MQTT($config_file);
+        try
+        {
+            $mqtt = new MQTT($config_file);
+        }
+        catch (Mosquitto\Exception $ex)
+        {
+            $cli->log("Mosquitto exception: ".$ex->getMessage(), LOG_ALERT);
+            
+            sleep(10);
+            
+            continue;
+        }
+        catch (exception $ex)
+        {
+            $cli->log("General MQTT exception: ".$ex->getMessage(), LOG_ALERT);
+            
+            sleep(10);
+            
+            continue;
+        }
         
         // Check, whether the MQTT connection has been established
         if (!$mqtt->connected)
