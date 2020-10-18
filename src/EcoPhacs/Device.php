@@ -39,6 +39,30 @@ class Device
     private $xmpp_client = null;
     private $xmpp_options = null;
     
+    public $battery_type = null;
+    public $battery_cells = null;
+    public $battery_eod_voltage = null;
+    public $battery_capacity_mah = null;
+    public $battery_voltage = null;
+    
+    public $battery_power = null;
+    public $battery_power_consumption = null;
+    public $battery_temperature = null;
+    
+    public $battery_charge_voltage = null;
+    public $battery_charge_current_mah = null;
+    
+    public $battery_charger_voltage = null;
+    public $battery_charger_current_mah = null;
+    public $battery_charger_efficiency = null;
+    public $battery_charger_power = null;
+    
+    public $battery_safe_runlevel = null;
+    public $battery_safe_runtime = null;
+    public $battery_depletion_time = null;
+    public $battery_absolute_charge_time = null;
+    public $battery_relative_charge_time = null;
+
     public $is_available = null;
     
     public $last_ping_request = null;
@@ -63,7 +87,14 @@ class Device
     
     public $status_lifespan_brush = null;
     public $status_lifespan_side_brush = null;
-    public $status_lifespan_dust_case_heap = null;
+    public $status_lifespan_dust_case_heap = null;    
+    
+    public const BATTERY_TYPE_LEAD_ACID = 0x01;
+    public const BATTERY_TYPE_LEAD_GEL = 0x02;
+    public const BATTERY_TYPE_NICD = 0x04;
+    public const BATTERY_TYPE_NIMH = 0x08;
+    public const BATTERY_TYPE_LION = 0x10;
+    public const BATTERY_TYPE_LIPO = 0x20;
         
     public const CLEANING_MODE_AUTO = 'auto';
     public const CLEANING_MODE_BORDER = 'border';
@@ -157,6 +188,8 @@ class Device
                     $this->last_battery_msg = round(microtime(true) * 1000);            
                     $this->status_battery_power = (double)$result[$index]["attributes"]["POWER"];
                     
+                    $this->update_battery_times();
+                    
                     $n++;
                 }
             }
@@ -214,6 +247,153 @@ class Device
         $result = self::parse_response($raw_response, $indexes);
         
         return $result;    
+    }
+    
+    public function set_battery_temperature($environment_temp = 20)
+    {
+        $this->battery_temperature = $environment_temp;
+    }
+    
+    public function set_battery_power_consumption($power_in_watt = 0)
+    {
+        $this->battery_power_consumption = $power_in_watt;
+    }
+    
+    public function set_battery_type($type = self::BATTERY_TYPE_LION, $voltage = 14.4, $capacity = 2600, $cell_count = 4, $charge_voltage_per_cell = 4.2, $charger_voltage = 19, $charger_current_mah = 600, $charger_efficiency = 80, $battery_safe_runlevel = 16)
+    {
+        if ($this->battery_temperature === null)
+            $this->set_battery_temperature();
+            
+        $this->battery_charger_voltage = $charger_voltage;
+        $this->battery_charger_current_mah = $charger_current_mah;
+        $this->battery_charger_power = ($this->battery_charger_voltage * ($this->battery_charger_current_mah / 1000));
+        $this->battery_charger_efficiency = $charger_efficiency;
+
+        if (($this->battery_temperature <= 20) && ($this->battery_temperature >= -20))
+        {
+            $depletion_upper = 20;
+            $depletion_lower = -20;
+        }
+        elseif ($this->battery_temperature > 20)
+        {
+            $depletion_upper = 60;
+            $depletion_lower = 20;
+        }
+        else
+        {
+            $depletion_upper = 0;
+            $depletion_lower = $this->battery_temperature;
+        }
+    
+        switch ($type)
+        {
+            case self::BATTERY_TYPE_LEAD_ACID:
+                $battery_eod_voltage_toplevel = 1.78;
+                $battery_eod_voltage_sublevel = 1.75;
+                break;
+            case self::BATTERY_TYPE_LEAD_GEL:
+                $battery_eod_voltage_toplevel = 1.78;
+                $battery_eod_voltage_sublevel = 1.75;
+                break;
+            case self::BATTERY_TYPE_NICD:
+                $battery_eod_voltage_toplevel = 0.9;
+                $battery_eod_voltage_sublevel = 0.8;
+                break;
+            case self::BATTERY_TYPE_NIMH:
+                $battery_eod_voltage_toplevel = 0.9;
+                $battery_eod_voltage_sublevel = 0.8;
+                break;
+            case self::BATTERY_TYPE_LION:
+                $battery_eod_voltage_toplevel = 2.8;
+                $battery_eod_voltage_sublevel = 2.5;
+                break;
+            case self::BATTERY_TYPE_LIPO:
+                $battery_eod_voltage_toplevel = 2.8;
+                $battery_eod_voltage_sublevel = 2.5;
+                break;
+            default:
+                return false;
+        }
+        
+        $this->battery_voltage = $voltage;
+        $this->battery_capacity_mah = $capacity;
+        $this->battery_cells = $cell_count;
+        $this->battery_charge_voltage = ($charge_voltage_per_cell * $cell_count);
+        $this->battery_charge_current_mah = (($this->battery_charger_power / $this->battery_charge_voltage) * 1000);
+        $this->battery_safe_runlevel = $battery_safe_runlevel;
+            
+        $depletion_range = ($depletion_upper - $depletion_lower);
+        
+        if ($depletion_range <= 0)
+        {
+            $eod_voltage_red = 0;
+            $battery_eod = $battery_eod_voltage_toplevel;
+        }
+        else
+        {
+            $depletion_factor = ((100 / $depletion_range * $this->battery_temperature) / 100);
+        
+            $eod_range = ($battery_eod_voltage_toplevel - $battery_eod_voltage_sublevel);
+            $eod_voltage_red = ($eod_range * $depletion_factor);
+            
+            $battery_eod = $battery_eod_voltage_sublevel;
+        }
+        
+        $this->battery_type = $type;
+        $this->battery_eod_voltage = ($this->battery_cells * ($battery_eod + $eod_voltage_red));
+    }
+    
+    public function get_power_consumption()
+    {
+        // This has to be changed later, to reflect the real bot values
+        
+        switch ($this->status_cleaning_mode)
+        {
+            case self::CLEANING_MODE_STOP:
+                $this->battery_power_consumption = 0;
+                break;
+            default:
+                $this->battery_power_consumption = (($this->status_vacuum_power == self::VACUUM_POWER_STRONG) ? 42.6 : 15.6);
+                break;
+        }
+        
+        return $this->battery_power_consumption;
+    }
+    
+    public function update_battery_times()
+    {
+        if (!$this->battery_type)
+            $this->set_battery_type();
+            
+        $this->battery_absolute_charge_time = (($this->battery_capacity_mah / $this->battery_charge_current_mah * 60) * ((200 - $this->battery_charger_efficiency) / 100));
+
+        $relative_capacity_mah = ($this->battery_capacity_mah / 100 * $this->status_battery_power);        
+        $this->battery_power = ($this->battery_voltage * ($relative_capacity_mah / 1000));
+        
+        $this->get_power_consumption();
+        
+        if ($this->status_cleaning_mode == self::CLEANING_MODE_STOP)
+        {
+            $this->battery_relative_charge_time = ($this->battery_absolute_charge_time / 100 * (100 - $this->status_battery_power));
+        }
+        else
+        {        
+            $this->battery_relative_charge_time = 0;
+        }
+                    
+        $power = $this->battery_power_consumption;
+
+        if ($power <= 0)
+            $power = $this->battery_power;
+        
+        $differential_capacity_mah = ($this->battery_capacity_mah - $relative_capacity_mah);
+        $this->battery_depletion_time = (($this->battery_voltage * ($differential_capacity_mah / 1000) / $power) * 60);
+        
+        $battery_min_capacity_mah = ($this->battery_capacity_mah / 100 * $this->battery_safe_runlevel);
+        $battery_min_time = (($this->battery_voltage * ($battery_min_capacity_mah / 1000) / $power) * 60);
+        
+        $safe_diff = (100 - $this->battery_safe_runlevel);        
+        $this->battery_safe_runtime = ($this->battery_depletion_time - $battery_min_time);
     }
         
     public function playsound($sid = 0, $act = null)
