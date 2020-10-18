@@ -409,7 +409,7 @@ class Device
             $this->battery_deep_discharge = "false";
         
         if ($this->battery_power_consumption > 0)
-            $this->battery_discharge_current = ($this->battery_power / $this->battery_rest_voltage);
+            $this->battery_discharge_current = ($this->battery_power_consumption / $this->battery_rest_voltage);
         else
             $this->battery_discharge_current = 0;
             
