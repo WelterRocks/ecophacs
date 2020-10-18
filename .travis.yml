@@ -7,7 +7,7 @@ notifications:
   email:
     on_success: never
 before_script:
-    - pecl install mosquitto
+    - pecl install "channel://pecl.php.net/mosquitto-0.4.0"
     - echo "extension=mosquitto.so" >> `php --ini | grep "Loaded Configuration" | sed -e "s|.*:\s*||"`
     - composer install
 script:
