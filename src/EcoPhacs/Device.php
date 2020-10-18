@@ -386,14 +386,16 @@ class Device
         if ($power <= 0)
             $power = $this->battery_power;
         
-        $differential_capacity_mah = ($this->battery_capacity_mah - $relative_capacity_mah);
-        $this->battery_depletion_time = (($this->battery_voltage * ($differential_capacity_mah / 1000) / $power) * 60);
+        $this->battery_depletion_time = ((($this->battery_voltage * ($this->battery_capacity_mah / 1000) / $power) * 60) / 100 * $this->status_battery_power);
         
         $battery_min_capacity_mah = ($this->battery_capacity_mah / 100 * $this->battery_safe_runlevel);
         $battery_min_time = (($this->battery_voltage * ($battery_min_capacity_mah / 1000) / $power) * 60);
         
         $safe_diff = (100 - $this->battery_safe_runlevel);        
         $this->battery_safe_runtime = ($this->battery_depletion_time - $battery_min_time);
+        
+        if ($this->battery_safe_runtime < 0)
+            $this->battery_safe_runtime = 0;
     }
         
     public function playsound($sid = 0, $act = null)
