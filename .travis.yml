@@ -11,7 +11,6 @@ before_script:
     - sudo apt-get update -qq
     - sudo apt-get install -qq libmosquitto-dev
     - yes "\n" | pecl install "channel://pecl.php.net/mosquitto-0.4.0"
-    - echo "extension=mosquitto.so" >> `php --ini | grep "Loaded Configuration" | sed -e "s|.*:\s*||"`
     - composer install
 script:
   # Search for PHP syntax errors.
