@@ -357,7 +357,7 @@ class Device
                 $this->battery_power_consumption = 0;
                 break;
             default:
-                $this->battery_power_consumption = (($this->status_vacuum_power == self::VACUUM_POWER_STRONG) ? 42.6 : 15.6);
+                $this->battery_power_consumption = (($this->status_vacuum_power == self::VACUUM_POWER_STRONG) ? 30.2 : 15.4);
                 break;
         }
         
@@ -401,7 +401,8 @@ class Device
         if ($this->battery_safe_runtime < 0)
             $this->battery_safe_runtime = 0;
         
-        $this->battery_rest_voltage = ($this->battery_power / ($this->battery_capacity_mah / 1000));
+        //$this->battery_rest_voltage = ($this->battery_power / ($this->battery_capacity_mah / 1000));
+        $this->battery_rest_voltage = ($this->battery_voltage - (($this->battery_voltage - $this->battery_eod_voltage) / 100 * $this->status_battery_power));
         
         if ($this->battery_rest_voltage <= $this->battery_eod_voltage)
             $this->battery_deep_discharge = "true";
