@@ -402,7 +402,8 @@ class Device
             $this->battery_safe_runtime = 0;
         
         //$this->battery_rest_voltage = ($this->battery_power / ($this->battery_capacity_mah / 1000));
-        $this->battery_rest_voltage = ($this->battery_voltage - (($this->battery_voltage - $this->battery_eod_voltage) / 100 * $this->status_battery_power));
+        $battery_diff = ($this->battery_voltage - $this->battery_eod_voltage);
+        $this->battery_rest_voltage = ($this->battery_voltage - ($battery_diff - ($battery_diff / 100 * $this->status_battery_power)));
         
         if ($this->battery_rest_voltage <= $this->battery_eod_voltage)
             $this->battery_deep_discharge = "true";
