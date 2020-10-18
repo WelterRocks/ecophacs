@@ -41,10 +41,14 @@ class Device
     
     public $battery_type = null;
     public $battery_cells = null;
-    public $battery_eod_voltage = null;
     public $battery_capacity_mah = null;
     public $battery_voltage = null;
     
+    public $battery_eod_voltage = null;
+    public $battery_rest_voltage = null;
+    public $battery_discharge_current = null;
+    public $battery_deep_discharge = null;
+
     public $battery_power = null;
     public $battery_power_consumption = null;
     public $battery_temperature = null;
@@ -396,6 +400,20 @@ class Device
         
         if ($this->battery_safe_runtime < 0)
             $this->battery_safe_runtime = 0;
+        
+        $this->battery_rest_voltage = ($this->battery_power / ($this->battery_capacity_mah / 1000));
+        
+        if ($this->battery_rest_voltage <= $this->battery_eod_voltage)
+            $this->battery_deep_discharge = "true";
+        else
+            $this->battery_deep_discharge = "false";
+        
+        if ($this->battery_power_consumption > 0)
+            $this->battery_discharge_current = ($this->battery_power / $this->battery_rest_voltage);
+        else
+            $this->battery_discharge_current = 0;
+            
+        return;
     }
         
     public function playsound($sid = 0, $act = null)
