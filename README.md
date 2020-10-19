@@ -100,7 +100,18 @@ back to the charger:
 EcoPhacs-Client.php --device-id E0000111122223333344444 auto --wait 10 charge
 ```
 
-But remember, this software is in a beta testing phase.
+If you want to use the MQTT version, remember to stop the Daemon, because
+synchronous running is currently not supported. If you use systemd, it will 
+automatically take care of stopping the other daemon. You can run the MQTT
+daemon with:
+
+```
+EcoPhacse-MQTT.php start
+```
+
+But remember, to configure your /etc/ecophacs/ecophacs.conf with `EcoPhacs-Configure.php`
+to set up your MQTT credentials. Also, TLS is currently not supported by the
+`EcoPhacs-MQTT.php` tool.
 
 # Library usage
 ## General information
@@ -115,6 +126,3 @@ because there is too much testing to do...Hope I can get you to give it a try.
 
 - **testing** - writing some testing routines for packaging
 currently there is only one working Example.php and no tests
-- **mqtt** - implement support for MQTT broker
-it is planned to implement a mqtt listener and a mqtt status daemon
-
