@@ -43,7 +43,7 @@ final class Exception extends \exception;
         return $this->suppress_cli_log;
     }
     
-    function __construct(string $message, int $code = 0, object $affected_class = null, CLI $cli = null, bool $suppress_cli_log = false, Throwable $previous = NULL)
+    function __construct(string $message, int $code = 0, object $affected_class = null, CLI $cli = null, bool $suppress_cli_log = false, Throwable $previous = null)
     {
         $this->affected_class = $class;
         $this->cli = $cli;
