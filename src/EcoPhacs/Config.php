@@ -73,6 +73,8 @@ final class Config
     
     private $dynamic_keys = null;
     
+    private $allow_override = null;
+    
     public function write($config_file = ".ecophacs")
     {
         $fd = @fopen($config_file, "w");
@@ -98,9 +100,58 @@ final class Config
         return true;
     }
     
+    public function override_enable()
+    {
+        $this->allow_override = true;
+    }
+    
+    public function override_disable()
+    {
+        $this->allow_override = false;
+    }
+    
+    public function override_api_credentials($api_key, $api_secret)
+    {
+        if (!$this->allow_override) return false;
+        
+        $this->api_key = $api_key;
+        $this->api_secret = $api_secret;
+        
+        return true;
+    }
+    
+    public function override_api_urls($api_url_main, $api_url_user)
+    {
+        if (!$this->allow_override) return false;
+
+        $this->api_url_main = $api_url_main;
+        $this->api_url_user = $api_url_user;
+        
+        return true;
+    }
+    
+    public function override_api_realm($api_realm)
+    {
+        if (!$this->allow_override) return false;
+
+        $this->api_realm = $api_realm;
+        
+        return true;
+    }
+    
+    public function override_public_key($public_key)
+    {
+        if (!$this->allow_override) return false;
+
+        $this->public_key = $public_key;
+
+        return true;
+    }
+    
     function __construct($config_file = ".ecophacs")
     {
         $this->dynamic_keys = array("device_id", "continent", "country", "account_id", "password_hash", "login_access_token", "login_uid", "login_username", "auth_code", "auth_uid", "user_uid", "user_access_token", "mqtt_hostname", "mqtt_hostport", "mqtt_username", "mqtt_password", "mqtt_client_id", "mqtt_topic");
+        $this->allow_override = false;
         
         if (file_exists($config_file))
         {

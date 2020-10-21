@@ -87,11 +87,12 @@ class Iq extends Stanza
         $this->socket->send($xml);
     }
     
-    public function command($from, $to, $todo, $command = null)
-    {
+    public function command($from, $to, $todo, $command = null, $no_ns0 = false)
+    {       
         $ctl = "<ctl id='{$this->uniqueId()}' td='{$todo}'".(($command) ? ">{$command}</ctl>" : "/>");
         $query = "<query xmlns='com:ctl'>{$ctl}</query>";
-        $xml = "<iq xmlns='jabber:client' type='set' from='{$from}' to='{$to}' id='{$this->uniqueId()}'>{$query}</iq>";
+        
+        $xml = "<iq ".(($no_ns0) ? "" : "xmlns='jabber:client' ")."type='set' from='{$from}' to='{$to}' id='{$this->uniqueId()}'>{$query}</iq>";
 
         $this->socket->send($xml);        
     }

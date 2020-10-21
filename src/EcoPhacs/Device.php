@@ -36,8 +36,14 @@ class Device
     private $full_jid = null;
     private $bare_jid = null;
     
+    private $user_jid_username = null;
+    private $user_jid_domain = null;
+    private $user_jid_resource = null;
+    
     private $xmpp_client = null;
     private $xmpp_options = null;
+    
+    private $is_bumper_server = null;
     
     public $battery_type = null;
     public $battery_cells = null;
@@ -131,6 +137,11 @@ class Device
     
     public const DEFAULT_TIMEZONE = 'GMT+2';
     
+    private function get_user_jid()
+    {
+        return $this->user_jid_username."@".$this->user_jid_domain."/".$this->user_jid_resource;
+    }
+    
     private static function parse_response($response, &$indexes = null)
     {
         if (!$response)
@@ -154,17 +165,24 @@ class Device
             {
                 $attr = $xml["attributes"];
                 
-                if (($attr["TO"] == $this->xmpp_options->fullJid()) && ($attr["FROM"] == $this->full_jid))
-                {
-                    if ($attr["TYPE"] == "result")
-                    {
-                        return true;
-                    }
-                    else
-                    {
-                        $retval = false;
-                    }
-                }
+                $rec = new \stdClass;
+                $rec->username = null;
+                $rec->domain = null;
+                $rec->resource = null;
+                
+                $this->validate_jid($attr["TO"], $rec->username, $rec->domain, $rec->resource);
+                
+                $has_result = false;
+                
+                if ($rec->username)
+                    $has_result = (($rec->username == $this->user_jid_username) && ($rec->domain == $this->user_jid_domain) && ($attr["FROM"] == $this->full_jid));
+                elseif ($rec->domain)
+                    $has_result = (($rec->domain == $this->user_jid_domain) && ($attr["FROM"] == $this->full_jid));
+                
+                if (($has_result) && ($attr["TYPE"] == "result"))
+                    return true;
+                else
+                    $retval = false;
             }
         }
         
@@ -401,7 +419,6 @@ class Device
         if ($this->battery_safe_runtime < 0)
             $this->battery_safe_runtime = 0;
         
-        //$this->battery_rest_voltage = ($this->battery_power / ($this->battery_capacity_mah / 1000));
         $battery_diff = ($this->battery_voltage - $this->battery_eod_voltage);
         $this->battery_rest_voltage = ($this->battery_voltage - ($battery_diff - ($battery_diff / 100 * $this->status_battery_power)));
         
@@ -422,7 +439,7 @@ class Device
     {
         $com = "<query sid='{$sid}'".(($act) ? " act='{$act}'" : "")."/>";
         
-        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "PlaySound", $com);
+        $this->xmpp_client->iq->command($this->get_user_jid(), $this->full_jid, "PlaySound", $com, $this->is_bumper_server);
         
         $indexes = null;
         $raw_response = null;
@@ -457,7 +474,7 @@ class Device
                 return false;
         }
         
-        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "Move", $com);
+        $this->xmpp_client->iq->command($this->get_user_jid(), $this->full_jid, "Move", $com, $this->is_bumper_server);
                                 
         $indexes = null;
         $raw_response = null;
@@ -479,7 +496,7 @@ class Device
     {
         $com = "<charge type='".self::CHARGING_MODE_GO."'".(($act) ? " act='{$act}'" : "")."/>";
         
-        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "Charge", $com);
+        $this->xmpp_client->iq->command($this->get_user_jid(), $this->full_jid, "Charge", $com, $this->is_bumper_server);
                         
         $indexes = null;
         $raw_response = null;
@@ -501,17 +518,21 @@ class Device
     {
         $com = null;
         
-        switch ($mode)
+        switch ($speed)
         {
             case self::VACUUM_POWER_STANDARD:
             case self::VACUUM_POWER_STRONG:
-                $com = "<speed type='{$speed}' speed='{$speed}'".(($act) ? " act='{$act}'" : "")."/>";
+                // This results in a short stop and restart with new speed, which is not the correct behavior.
+                // There must be a command to set the speed, while keeping the bot running.
+                // Feel free to tell me, which command this is.
+                
+                $com = "<clean speed='{$speed}'".(($act) ? " act='{$act}'" : "")."/>";
                 break;
             default:
                 return false;
         }
 
-        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "Speed", $com);
+        $this->xmpp_client->iq->command($this->get_user_jid(), $this->full_jid, "Clean", $com, $this->is_bumper_server);
                 
         $indexes = null;
         $raw_response = null;
@@ -549,7 +570,7 @@ class Device
                 return false;
         }
 
-        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "Clean", $com);
+        $this->xmpp_client->iq->command($this->get_user_jid(), $this->full_jid, "Clean", $com, $this->is_bumper_server);
                 
         $indexes = null;
         $raw_response = null;
@@ -659,8 +680,8 @@ class Device
     
     public function get_clean_state(&$raw_response = null)
     {        
-        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "GetCleanState");
-        
+        $this->xmpp_client->iq->command($this->get_user_jid(), $this->full_jid, "GetCleanState", null, $this->is_bumper_server);
+
         $indexes = null;
         $raw_response = null;
         
@@ -679,7 +700,7 @@ class Device
     
     public function get_battery_info()
     {        
-        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "GetBatteryInfo");
+        $this->xmpp_client->iq->command($this->get_user_jid(), $this->full_jid, "GetBatteryInfo", null, $this->is_bumper_server);
         
         $indexes = null;
         $raw_response = null;
@@ -699,7 +720,7 @@ class Device
     
     public function get_charge_state()
     {        
-        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "GetChargeState");
+        $this->xmpp_client->iq->command($this->get_user_jid(), $this->full_jid, "GetChargeState", null, $this->is_bumper_server);
         
         $indexes = null;
         $raw_response = null;
@@ -730,7 +751,7 @@ class Device
                 return false;
         }
         
-        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "GetLifeSpan", $com);
+        $this->xmpp_client->iq->command($this->get_user_jid(), $this->full_jid, "GetLifeSpan", $com, $this->is_bumper_server);
         
         $indexes = null;
         $raw_response = null;
@@ -797,7 +818,7 @@ class Device
             
         $com = "<time t='{$timestamp}' tz='{$timezone}'/>";
         
-        $this->xmpp_client->iq->command($this->xmpp_options->fullJid(), $this->full_jid, "SetTime", $com);
+        $this->xmpp_client->iq->command($this->get_user_jid(), $this->full_jid, "SetTime", $com, $this->is_bumper_server);
         
         $indexes = null;
         $raw_response = null;
@@ -818,7 +839,7 @@ class Device
     public function ping(&$raw_response = null)
     {
         $this->last_ping_request = round(microtime(true) * 1000);
-        $this->xmpp_client->iq->pingTo($this->xmpp_options->fullJid(), $this->full_jid);
+        $this->xmpp_client->iq->pingTo($this->get_user_jid(), $this->full_jid);
         
         $indexes = null;
         $raw_response = null;
@@ -826,18 +847,75 @@ class Device
         $result = $this->get_parsed_response($raw_response, $indexes);
         $this->last_ping_response = round(microtime(true) * 1000);
         
-        $this->is_available = null;
+        $is_available = null;
+
         $this->last_ping_roundtrip = ($this->last_ping_response - $this->last_ping_request);
-                
+                    
         if (!$result)
             return null;
             
-        $this->is_available = $this->iq_complete_result($result);
+        $is_available = $this->iq_complete_result($result);
         
-        if ($this->is_available)
+        if (!$this->is_bumper_server)
+        {
+            if ($is_available)
+                $this->register_states($result, $indexes);
+        
+            $this->is_available = $is_available;
+        }
+        else
+        {
             $this->register_states($result, $indexes);
+            $is_available = true;
+        }
         
-        return $this->is_available;
+        return $is_available;
+    }
+    
+    public function set_as_bumper_server()
+    {
+        $this->is_available = true;
+        $this->is_bumper_server = true;
+    }
+    
+    public function is_bumper_server()
+    {
+        return $this->is_bumper_server;
+    }
+    
+    public function validate_jid($jid, &$username = null, &$domain = null, &$resource = null, &$is_bare_jid = null)
+    {
+        $username = null;
+        $domain = null;
+        $resource = null;
+        $is_bare_jid = null;
+        
+        $parts = json_decode(json_encode(parse_url("xmpp://".$jid)));
+    
+        if ((!$parts) || (!is_object($parts)))
+            return false;
+        
+        if (!isset($parts->host))
+            return false;
+            
+        $domain = $parts->host;
+
+        if (!isset($parts->user))
+            return false;
+        
+        $username = $parts->user;
+        
+        if (isset($parts->path))
+        {
+            $resource = substr($parts->path, 1);
+            $is_bare_jid = false;
+        }
+        else
+        {
+            $is_bare_jid = true;
+        }
+        
+        return true;
     }
     
     public function to_json()
@@ -850,7 +928,7 @@ class Device
         $obj->class = $this->class;
         $obj->bare_jid = $this->bare_jid;
         $obj->full_jid = $this->full_jid;
-        $obj->user_jid = $this->xmpp_options->fullJid();
+        $obj->user_jid = $this->get_user_jid();
         $obj->company = $this->company;
         
         return json_encode($obj);
@@ -875,11 +953,19 @@ class Device
         $this->nick = $nick;
         $this->company = $company;
         $this->resource = $resource;
+        
+        $this->is_bumper_server = false;
 
         $this->bare_jid = $did."@".$class.".".$atom_domain;
         $this->full_jid = $this->bare_jid."/".$resource;
         
         $this->xmpp_client = $xmpp_client;
         $this->xmpp_options = $xmpp_options;
+        
+        $this->user_jid_username = null;
+        $this->user_jid_domain = null;
+        $this->user_jid_resource = null;
+        
+        $this->validate_jid($this->xmpp_options->fullJid(), $this->user_jid_username, $this->user_jid_domain, $this->user_jid_resource);
     }
 }

@@ -31,6 +31,8 @@ class Client
     private $xmpp_client = null;
     private $xmpp_options = null;
     
+    private $is_bumper_server = null;
+    
     private $config = null;    
     private $config_file = null;
     
@@ -174,7 +176,7 @@ class Client
                 CURLOPT_SSL_VERIFYHOST => 0,
                 CURLOPT_POSTFIELDS => http_build_query($obj)
             );
-            
+
             if ($as_json)
             {
                 $options[CURLOPT_POSTFIELDS] = json_encode($obj);
@@ -191,7 +193,7 @@ class Client
         curl_setopt_array($ch, $options);            
         $result = curl_exec($ch);
         @curl_close($ch);
-            
+
         if (!$result)
             return null;
             
@@ -279,7 +281,7 @@ class Client
             return false;
             
         $json = json_decode($result);
-        
+
         if (!is_object($json))
             return false;
         
@@ -315,7 +317,7 @@ class Client
         $obj->token = $this->config->auth_code;
         
         $result = $this->send_api("loginByItToken", $obj, "user");
-        
+
         if (!$result)
             return false;
             
@@ -422,6 +424,9 @@ class Client
                     $dev->company,
                     $dev->resource
                 );
+                
+                if ($this->is_bumper_server())
+                    $this->device_list[$dev->did]->set_as_bumper_server();
             }
             
             return true;
@@ -440,26 +445,53 @@ class Client
         }
     }
     
+    public function dry_login(&$error = null)
+    {
+        $error = null;
+        
+        if (!$this->login($error))
+        {
+            if (!$error)
+                $error = "Login failed";
+                
+            return false;
+        }
+            
+        if (!$this->get_authcode($error))
+        {
+            if (!$error)
+                $error = "Getting authcode failed";
+                
+            return false;
+        }
+            
+        if (!$this->login_by_it_token($error))
+        {
+            if (!$error)
+                $error = "no token returned";
+                
+            return false;
+        }
+            
+        if (!$this->update_device_list($error))
+        {
+            if (!$error)
+                $error = "unable to get device list";
+                
+            return false;
+        }
+            
+        return true;
+    }
+    
     public function try_login(&$error = null)
     {
         $error = null;
         
         if ($this->update_device_list($error))
             return true;
-            
-        if (!$this->login($error))
-            return false;
-            
-        if (!$this->get_authcode($error))
-            return false;
-            
-        if (!$this->login_by_it_token($error))
-            return false;
-            
-        if (!$this->update_device_list($error))
-            return false;
-            
-        return true;
+
+        return $this->dry_login($error);            
     }
     
     public function try_connect(&$error = null)
@@ -525,12 +557,43 @@ class Client
             
         return $this->device_list;
     }
+
+    public function set_as_bumper_server()
+    {
+        $this->is_bumper_server = true;
+    }
+
+    public function is_bumper_server()
+    {
+        return $this->is_bumper_server;
+    }
+    
+    public function bump_api($public_key, $api_key = null, $api_secret = null, $api_url_main = null, $api_url_user = null, $api_realm = null)
+    {
+        $this->config->override_enable();
+        $this->config->override_public_key($public_key);
+        
+        if (($api_key) && ($api_secret))
+            $this->config->override_api_credentials($api_key, $api_secret);
+            
+        if (($api_url_main) && ($api_url_user))
+            $this->config->override_api_urls($api_url_main, $api_url_user);
+            
+        if ($api_realm)
+            $this->config->override_realm($api_realm);
+            
+        $this->config->override_disable();
+        
+        return true;
+    }
     
     function __construct($config = ".ecophacs", $username = null, $password = null, $continent = null, $country = null, $device_id = null)
     {
         $this->config_file = $config;
         
         $this->config = new Config($this->config_file);
+        
+        $this->is_bumper_server = false;
         
         if ($username)
             $this->config->account_id = $username;

@@ -15,6 +15,9 @@ linked to your account. EcoPhacs has been written in PHP and is an alternative
 to the [Sucks](https://github.com/wpietri/sucks) project.
 
 # News
+- **2020-10-21** Added bumper compat.
+Now, it is possible to use EcoPhacs with bumper. Added some compatibility code to make EcoPhacs work
+with the bumper server project.
 - **2020-10-17** EcoPhacs-MQTT release.
 The first beta version of the EcoPhacs-MQTT daemon has been released. Now, it is possible to connect
 your Ecovacs Deebot directly to a MQTT broker, which is e.g. useful to control and supervise your Ecovacs
@@ -112,6 +115,14 @@ EcoPhacse-MQTT.php start
 But remember, to configure your /etc/ecophacs/ecophacs.conf with `EcoPhacs-Configure.php`
 to set up your MQTT credentials. Also, TLS is currently not supported by the
 `EcoPhacs-MQTT.php` tool.
+
+## Bumper usage
+If you want to use EcoPhacs with bumper, add the following options to `EcoPhacs-Daemon.php`
+or `EcoPhacs-MQTT.php`, to enable to bumper compatibility mode in EcoPhacs:
+
+```
+EcoPhacs-{Daemon|MQTT}.php --bump-api /path/to/bumper/certs/bumper.crt --dry-login --api-urls "https://[IP-OF-BUMPER-SERVER]/v1/private/%country%/%app_language%/%device_id%/%app_code%/%app_version%/%app_channel%/%device_type%" "https://[IP-OF-BUMPER-SERVER]/api/users/user.do" --is-bumper-server start|foreground
+```
 
 # Library usage
 ## General information

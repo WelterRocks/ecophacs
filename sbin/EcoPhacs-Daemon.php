@@ -55,6 +55,9 @@ $public_functions = null;
 
 $pid = null;
 
+$bump_api = null;
+$dry_login = null;
+
 // Create CLI object
 try
 {
@@ -229,7 +232,7 @@ function worker_loop(Client $ecovacs, $devices)
 {
     global $ticks_state, $ticks_lifespans, $ticks_output;
     global $cli, $fifo_in, $fifo_out, $public_functions;
-    global $worker_reload, $daemon_terminate;
+    global $worker_reload, $daemon_terminate, $dry_login, $bump_api;
     
     // Dispatch signals in inner loop
     $cli->signals_dispatch();
@@ -432,7 +435,7 @@ function mother()
 function daemon()
 {
     global $cli, $fifo_in, $fifo_out, $public_functions;
-    global $daemon_terminate, $worker_reload;
+    global $daemon_terminate, $worker_reload, $bump_api, $dry_login;
     
     // Register shutdown function
     register_shutdown_function("shutdown_daemon");
@@ -472,16 +475,28 @@ function daemon()
         // Create the client (main) object
         $ecovacs = new Client(select_config_file());
 
+        // Check, whether we have to "bump" the API
+        if (is_object($bump_api)) 
+        {
+            $ecovacs->bump_api($bump_api->public_key, $bump_api->key, $bump_api->secret, $bump_api->url_main, $bump_api->url_user, $bump_api->realm);
+            
+            if ($bump_api->is_bumper_server)
+                $ecovacs->set_as_bumper_server();
+        }
+
         // Initialize error string store
         $error = null;
         
         // Dispatch signals in outer loop
         $cli->signals_dispatch();
+        
+        // Try login or "dry" login
+        $do_login = (($dry_login) ? "dry_login" : "try_login");
 
         // Try to login, if not yet done, otherwise fetch device list
-        if (!$ecovacs->try_login($error))
+        if (!$ecovacs->$do_login($error))
         {
-            $cli->log("Unable to login: ".$error, LOG_ALERT);
+            $cli->log("Unable to ".(($dry_login) ? "dry-" : "")."login: ".$error, LOG_ALERT);
         
             sleep(10);
             
@@ -594,6 +609,87 @@ function shutdown_daemon()
     fifo_shutdown();
     remove_pid();
 }
+
+// Use alternative security informations ("bump" the API)
+if ($cli->has_argument("--bump-api"))
+{
+    $public_key_file = $cli->get_argument_childs("--bump-api", 1);
+
+    $bump_api = new \stdClass;
+
+    $bump_api->key = null;
+    $bump_api->secret = null;
+    $bump_api->url_main = null;
+    $bump_api->url_user = null;
+    $bump_api->realm = null;
+    $bump_api->public_key = null;
+    $bump_api->is_bumper_server = null;
+    
+    if ($cli->has_argument("--is-bumper-server"))
+        $bump_api->is_bumper_server = true;
+    else
+        $bump_api->is_bumper_server = false;
+
+    if ($cli->has_argument("--api-credentials"))
+    {
+        $credentials = $cli->get_argument_childs("--api-credentials", 2);
+
+        if ((is_array($credentials)) && (count($credentials) == 2))
+        {
+            $bump_api->key = $credentials[0];
+            $bump_api->secret = $credentials[1];
+        }
+
+        unset($credentials);
+    }
+
+    if ($cli->has_argument("--api-urls"))
+    {
+        $urls = $cli->get_argument_childs("--api-urls", 2);
+
+        if ((is_array($urls)) && (count($urls) == 2))
+        {
+            $bump_api->url_main = $urls[0];
+            $bump_api->url_user = $urls[1];
+        }
+
+        unset($urls);
+    }
+
+    if ($cli->has_argument("--api-realm"))
+    {
+        $args = $cli->get_argument_childs("--api-realm", 1);
+
+        if ((is_array($args)) && (count($args) == 1))
+            $bump_api->realm = $args[0];
+
+        unset($args);
+    }
+
+    if (!$public_key_file)
+        $cli->exit_error(CLI::COLOR_LIGHT_RED."Missing certificate filename after argument.".CLI::COLOR_EOL, 2);
+    elseif (is_array($public_key_file))
+        $public_key_file = $public_key_file[0];
+
+    if (!file_exists($public_key_file))
+        $cli->exit_error(CLI::COLOR_LIGHT_RED."Certificate file not found.".CLI::COLOR_EOL, 2);
+
+    $cert = explode("-----", str_replace("\n", "", trim(@file_get_contents($public_key_file))));
+
+    unset($public_key_file);
+
+    if (count($cert) > 3)
+        $bump_api->public_key = $cert[2];
+
+    if (!$bump_api->public_key)
+        $cli->exit_error(CLI::COLOR_LIGHT_RED."Not a valid certificate file.".CLI::COLOR_EOL, 3);
+
+    unset($cert);
+}
+
+// Check for "dry" login
+if ($cli->has_argument("--dry-login"))
+    $dry_login = true;
 
 // Check usage
 if ($cli->has_argument("start"))
