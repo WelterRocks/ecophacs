@@ -22,7 +22,7 @@
 
 use WelterRocks\EcoPhacs\CLI;
 
-final class Exception extends \exception;
+final class Exception extends \exception
 {
     private $affected_class = null;
     private $suppress_cli_log = null;
