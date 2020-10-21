@@ -24,6 +24,7 @@ use Mosquitto\Client;
 use Mosquitto\Message;
 use WelterRocks\EcoPhacs\Config;
 use WelterRocks\EcoPhacs\Device;
+use WelterRocks\EcoPhacs\Exception;
 
 class MQTT
 {
@@ -234,7 +235,7 @@ class MQTT
         {
             return null;
         }
-        catch (exception $ex)
+        catch (\exception $ex)
         {
             return null;
         }
@@ -252,7 +253,7 @@ class MQTT
         {
             return null;
         }
-        catch (exception $ex)
+        catch (\exception $ex)
         {
             return null;
         }

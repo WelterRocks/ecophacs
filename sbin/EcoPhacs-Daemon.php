@@ -26,6 +26,7 @@ use WelterRocks\EcoPhacs\Client;
 use WelterRocks\EcoPhacs\Device;
 use WelterRocks\EcoPhacs\Callback;
 use WelterRocks\EcoPhacs\CLI;
+use WelterRocks\EcoPhacs\Exception;
 
 // FIFO, config and PID file settings
 define("PROG_NAME", "EcoPhacsDaemon");
@@ -59,7 +60,7 @@ try
 {
     $cli = new CLI(PROG_NAME);
 }
-catch (exception $ex)
+catch (Exception $ex)
 {
     echo "FATAL ERROR: ".$ex->getMessage()."\n";
     exit(255);

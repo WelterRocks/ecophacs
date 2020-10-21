@@ -23,6 +23,7 @@
 declare(ticks = 1);
 
 use WelterRocks\EcoPhacs\Callback;
+use WelterRocks\EcoPhacs\Exception;
 
 class CLI
 {
@@ -83,8 +84,35 @@ class CLI
         return posix_getpgid($pid);
     }
     
+    public static function create_path_recursive($filename, $create_mask = 0777, &$path_exists = null, &$file_exists = null)
+    {
+        $dirname = dirname($filename);
+        
+        $file_exists = file_exists($filename);
+        $path_exists = is_dir($dirname);
+        
+        $retval = null;
+        
+        if ($file_exists)
+            $retval = true;
+        elseif (is_dir($dirname))
+            $retval = true;
+        elseif ((!is_dir($dirname)) && (file_exists($dirname)))
+            $retval = null;
+        
+        if (!mkdir($dirname, $create_mask, true))
+            $retval = false;
+            
+        return $retval;
+    }
+    
     public static function set_pidfile($pidfile, $pid, $force = false)
     {
+        $pidpath = self::create_path_recursive($pidfile);
+        
+        if ($pidpath === null)
+            throw new Exception("Unable to create path for pidfile '".$pidfile."'.", 1, null, $this);
+        
         if ((!$force) && (file_exists($pidfile)))
         {
             $oldpid = self::get_pid_from_pidfile($pidfile);
@@ -949,10 +977,10 @@ class CLI
         }
         
         if (!$this->command)
-            throw new \exception("Missing argument zero. Not on CLI?");
+            throw new Exception("Missing argument zero. Not on CLI?", 1, null, $this);
             
         if (!$this->argumentcount < 0)
-            throw new \exception("Missing argument count. Not on CLI?");
+            throw new Exception("Missing argument count. Not on CLI?", 2, null, $this);
                 
         $this->init_signals();
         $this->init_callbacks();

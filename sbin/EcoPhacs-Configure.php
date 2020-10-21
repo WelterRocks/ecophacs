@@ -26,6 +26,7 @@ use WelterRocks\EcoPhacs\Client;
 use WelterRocks\EcoPhacs\Device;
 use WelterRocks\EcoPhacs\Callback;
 use WelterRocks\EcoPhacs\CLI;
+use WelterRocks\EcoPhcas\Exception;
 
 // Program name
 $prog_name = "EcoPhacs-Configure";
@@ -35,7 +36,7 @@ try
 {
     $cli = new CLI($prog_name);
 }
-catch (exception $ex)
+catch (Exception $ex)
 {
     echo "FATAL ERROR: ".$ex->message."\n";
     exit(255);
