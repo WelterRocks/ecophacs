@@ -100,8 +100,8 @@ class CLI
         elseif ((!is_dir($dirname)) && (file_exists($dirname)))
             $retval = null;
         
-        if (!mkdir($dirname, $create_mask, true))
-            $retval = false;
+        if ((!$path_exists) && (!$file_exists))
+            $retval = @mkdir($dirname, $create_mask, true);
             
         return $retval;
     }
