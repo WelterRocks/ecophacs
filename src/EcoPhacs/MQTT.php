@@ -46,17 +46,17 @@ class MQTT
         $this->config = new Config($this->config_file);
         
         if ($hostname)
-            $this->mqtt_hostname = $hostname;
+            $this->config->mqtt_hostname = $hostname;
         if ($port)
-            $this->mqtt_hostport = $port;
+            $this->config->mqtt_hostport = $port;
         if ($username)
-            $this->mqtt_username = $username;
+            $this->config->mqtt_username = $username;
         if ($password)
-            $this->mqtt_password = $password;
+            $this->config->mqtt_password = $password;
         if ($client_id)
-            $this->mqtt_client_id = $client_id;
+            $this->config->mqtt_client_id = $client_id;
         if ($topic)
-            $this->mqtt_topic = $topic;
+            $this->config->mqtt_topic = $topic;
             
         if (($username) || ($password) || ($hostname) || ($port) || ($client_id) || ($topic))
             $this->config->write($config);
