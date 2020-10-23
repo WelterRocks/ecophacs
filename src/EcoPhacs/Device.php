@@ -782,24 +782,24 @@ class Device
                             
                             $this->status_lifespan_brush = new \stdClass;
                             $this->status_lifespan_brush->total = (double)$attr["TOTAL"];
-                            $this->status_lifespan_brush->value = (double)$attr["VAL"];
-                            $this->status_lifespan_brush->percent = round((100 / $this->status_lifespan_brush->total * $this->status_lifespan_brush->value));
+                            $this->status_lifespan_brush->percent = (double)$attr["VAL"];
+                            $this->status_lifespan_brush->value = round($this->status_lifespan_brush->total - ($this->status_lifespan_brush->total / 100 * $this->status_lifespan_brush->value));
                             break;
                         case self::COMPONENT_SIDE_BRUSH:
                             $this->last_lifespan_side_brush = round(microtime(true) * 1000);
                             
                             $this->status_lifespan_side_brush = new \stdClass;
                             $this->status_lifespan_side_brush->total = (double)$attr["TOTAL"];
-                            $this->status_lifespan_side_brush->value = (double)$attr["VAL"];
-                            $this->status_lifespan_side_brush->percent = round((100 / $this->status_lifespan_side_brush->total * $this->status_lifespan_side_brush->value));
+                            $this->status_lifespan_side_brush->percent = (double)$attr["VAL"];
+                            $this->status_lifespan_side_brush->value = round($this->status_lifespan_side_brush->total - ($this->status_lifespan_side_brush->total / 100 * $this->status_lifespan_side_brush->value));
                             break;
                         case self::COMPONENT_DUST_CASE_HEAP:
                             $this->last_lifespan_dust_case_heap = round(microtime(true) * 1000);
                             
                             $this->status_lifespan_dust_case_heap = new \stdClass;
                             $this->status_lifespan_dust_case_heap->total = (double)$attr["TOTAL"];
-                            $this->status_lifespan_dust_case_heap->value = (double)$attr["VAL"];
-                            $this->status_lifespan_dust_case_heap->percent = round((100 / $this->status_lifespan_dust_case_heap->total * $this->status_lifespan_dust_case_heap->value));
+                            $this->status_lifespan_dust_case_heap->percent = (double)$attr["VAL"];
+                            $this->status_lifespan_dust_case_heap->value = round($this->status_lifespan_dust_case_heap->total - ($this->status_lifespan_dust_case_heap->total / 100 * $this->status_lifespan_dust_case_heap->value));
                             break;
                         default:
                             break;
