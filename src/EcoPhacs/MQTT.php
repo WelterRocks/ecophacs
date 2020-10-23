@@ -39,7 +39,7 @@ class MQTT
     
     private $config_file = null;
     
-    function __construct($config = ".ecophacs", $hostname = null, $port = null, $username = null, $password = null, $client_id = null, $topic = null)
+    function __construct($config = ".ecophacsrc", $hostname = null, $port = null, $username = null, $password = null, $client_id = null, $topic = null)
     {
         $this->config_file = $config;
         

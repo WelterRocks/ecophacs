@@ -26,7 +26,7 @@ use WelterRocks\EcoPhacs\Client;
 use WelterRocks\EcoPhacs\Device;
 use WelterRocks\EcoPhacs\Callback;
 use WelterRocks\EcoPhacs\CLI;
-use WelterRocks\EcoPhcas\Exception;
+use WelterRocks\EcoPhacs\Exception;
 
 // Program name
 $prog_name = "EcoPhacs-Configure";

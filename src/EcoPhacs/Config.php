@@ -75,7 +75,7 @@ final class Config
     
     private $allow_override = null;
     
-    public function write($config_file = ".ecophacs")
+    public function write($config_file = ".ecophacsrc")
     {
         $fd = @fopen($config_file, "w");
         
@@ -148,7 +148,7 @@ final class Config
         return true;
     }
     
-    function __construct($config_file = ".ecophacs")
+    function __construct($config_file = ".ecophacsrc")
     {
         $this->dynamic_keys = array("device_id", "continent", "country", "account_id", "password_hash", "login_access_token", "login_uid", "login_username", "auth_code", "auth_uid", "user_uid", "user_access_token", "mqtt_hostname", "mqtt_hostport", "mqtt_username", "mqtt_password", "mqtt_client_id", "mqtt_topic");
         $this->allow_override = false;

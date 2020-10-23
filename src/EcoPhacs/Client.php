@@ -587,7 +587,7 @@ class Client
         return true;
     }
     
-    function __construct($config = ".ecophacs", $username = null, $password = null, $continent = null, $country = null, $device_id = null)
+    function __construct($config = ".ecophacsrc", $username = null, $password = null, $continent = null, $country = null, $device_id = null)
     {
         $this->config_file = $config;
         
