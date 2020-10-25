@@ -58,6 +58,8 @@ $pid = null;
 $bump_api = null;
 $dry_login = null;
 
+$log_options = LOG_CONS | LOG_NDELAY | LOG_PID;
+
 // Create CLI object
 try
 {
@@ -434,7 +436,7 @@ function mother()
 // Daemon callback does the hard part
 function daemon()
 {
-    global $cli, $fifo_in, $fifo_out, $public_functions;
+    global $cli, $fifo_in, $fifo_out, $public_functions, $log_options;
     global $daemon_terminate, $worker_reload, $bump_api, $dry_login;
     
     // Register shutdown function
@@ -461,7 +463,7 @@ function daemon()
     $cli->redirect_signal(SIGINT, SIGTERM);
     
     // Initialize logger
-    $cli->init_log(LOG_DAEMON);
+    $cli->init_log(LOG_DAEMON, $log_options);
     
     // Initialize FIFOs
     fifo_initialize();
@@ -711,6 +713,9 @@ elseif ($cli->has_argument("foreground"))
         $cli->exit_error(CLI::COLOR_LIGHT_RED."Another instance of ".CLI::COLOR_LIGHT_YELLOW.PROG_NAME.CLI::COLOR_LIGHT_RED." is running at PID ".CLI::COLOR_LIGHT_GREEN.$pid.CLI::COLOR_EOL, 2);
     elseif (!$cli->set_pidfile(PID_FILE, $cli->get_pid()))
         $cli->exit_error(CLI::COLOR_LIGHT_RED."Unable to write PID file '".CLI::COLOR_LIGHT_YELLOW.PID_FILE.CLI::COLOR_LIGHT_RED."'".CLI::COLOR_EOL, 3);
+
+    // Redirect log to console
+    $log_options = LOG_CONS | LOG_NDELAY | LOG_PID | LOG_PERROR;
 
     // Start the daemon in foreground
     daemon();    

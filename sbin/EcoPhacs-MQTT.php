@@ -52,6 +52,8 @@ $pid = null;
 $bump_api = null;
 $try_login = null;
 
+$log_options = LOG_CONS | LOG_NDELAY | LOG_PID;
+
 // Create CLI object
 try
 {
@@ -399,7 +401,7 @@ function mother()
 function daemon()
 {
     global $cli, $public_functions, $bump_api, $dry_login;
-    global $daemon_terminate, $worker_reload;
+    global $daemon_terminate, $worker_reload, $log_options;
     
     // Register shutdown function
     register_shutdown_function("shutdown_daemon");
@@ -425,7 +427,7 @@ function daemon()
     $cli->redirect_signal(SIGINT, SIGTERM);
     
     // Initialize logger
-    $cli->init_log(LOG_DAEMON);
+    $cli->init_log(LOG_DAEMON, $log_options);
     
     // Say hello to the log
     $cli->log(PROG_NAME." is starting up", LOG_INFO);
@@ -706,6 +708,9 @@ elseif ($cli->has_argument("foreground"))
     elseif (!$cli->set_pidfile(PID_FILE, $cli->get_pid()))
         $cli->exit_error(CLI::COLOR_LIGHT_RED."Unable to write PID file '".CLI::COLOR_LIGHT_YELLOW.PID_FILE.CLI::COLOR_LIGHT_RED."'".CLI::COLOR_EOL, 3);
     
+    // Redirect log to console
+    $log_options = LOG_CONS | LOG_NDELAY | LOG_PID | LOG_PERROR;
+
     // Start the daemon in foreground    
     daemon();
 }
