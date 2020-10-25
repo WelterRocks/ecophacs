@@ -28,6 +28,9 @@ use WelterRocks\EcoPhacs\Callback;
 use WelterRocks\EcoPhacs\CLI;
 use WelterRocks\EcoPhacs\Exception;
 
+// Set error reporting
+error_reporting(E_ERROR | E_PARSE);
+
 // Program name
 $prog_name = "EcoPhacs-Configure";
 

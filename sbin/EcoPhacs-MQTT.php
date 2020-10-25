@@ -37,6 +37,9 @@ define("PID_FILE", RUN_DIR."/".PROG_NAME.".pid");
 define("HOME_DIR", getenv("HOME"));
 define("CONF_DIR", "/etc/ecophacs");
 
+// Set error reporting
+error_reporting(E_ERROR | E_PARSE);
+
 // Handles, bools and tick counters
 $daemon_terminate = false;
 $worker_reload = false;

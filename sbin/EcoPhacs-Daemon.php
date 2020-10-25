@@ -40,6 +40,9 @@ define("SOCKET_PERM", "0666");
 define("HOME_DIR", getenv("HOME"));
 define("CONF_DIR", "/etc/ecophacs");
 
+// Set error reporting
+error_reporting(E_ERROR | E_PARSE);
+
 // Handles, bools and tick counters
 $fifo_in = null;
 $fifo_out = null;
